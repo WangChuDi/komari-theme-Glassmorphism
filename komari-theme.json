@@ -1,8 +1,8 @@
 {
-  "name": "Komari Glassmorphism",
-  "short": "Glassmorphism",
-  "description": "A Glassmorphism theme for Komari",
-  "version": "3.2.1",
+  "name": "Komari Glassmorphism-multiLatency",
+  "short": "Glassmorphism-multiLatency",
+  "description": "A Glassmorphism theme for Komari with multi-network latency monitoring",
+  "version": "3.2.1-multiLatency",
   "author": "sanrokamlan",
   "url": "https://github.com/WangChuDi/komari-theme-Glassmorphism",
   "preview": "preview.png",
