@@ -44,16 +44,21 @@
 - 首页卡片和列表的延迟/丢包摘要可按自动识别、多网全部、单运营商或同运营商具体任务过滤。
 - 新版 Metric Store 与旧 records fallback 都保留兼容；公开首页仍不需要登录。
 - 主题托管配置可设置默认线路和默认任务关键词，首页用户选择可本地覆盖。
+- 已 fork 到 `https://github.com/WangChuDi/komari-theme-Glassmorphism`，本地修改推送到 fork 分支 `multi-network-ping`。
+- 已创建 Release `v3.2.0-multi-network`：`https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.0-multi-network`。
+- Release 资产 `komari-theme-Glassmorphism-build-e33be5f.zip` 下载复核通过：SHA-256 `217C0A7F94BD615D01E65A96C06C1E28DCFEEEF5B3EF5AB21DEEE91C86B7115A`，zip 内含 `komari-theme.json`、`preview.png`、`dist/index.html`，包内版本 `3.2.0`，manifest URL 指向 `https://github.com/WangChuDi/komari-theme-Glassmorphism`。
 
 未完成：
 
 - 尚未在真实 Komari 后端、多任务名如“广东电信 / 北京电信 / 联通 / 移动 / 教育网”的数据集上做浏览器运行态验证。
+- 尚未切换用户 VPS 上的 Komari 主题；当前缺少 Codex 可用的 VPS SSH 连接信息或已登录的 Komari 后台会话。
 
 下一步：
 
 1. 在真实站点创建或使用含运营商关键词的 Ping 任务，打开首页确认控制条计数、具体任务下拉和节点卡 tooltip。
 2. 切换“电信 -> 广东电信 / 北京电信”确认延迟数值、丢包百分比和 20 格历史条同步变化。
 3. 打开完整 Ping 弹窗确认所有任务仍可多选查看，运营商标签识别符合预期。
+4. 获取 VPS SSH 或 Komari 后台登录入口后，将主题切换到 fork Release `v3.2.0-multi-network`。
 
 ## 上一任务
 
