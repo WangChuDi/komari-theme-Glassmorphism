@@ -26,6 +26,7 @@
 - 主题安装标识调整为 `Glassmorphism-multiLatency`，展示名为 `Komari Glassmorphism-multiLatency`；这会使 Komari 安装后的主题目录和数据库激活值使用新 short 名。
 - 已发布 `v3.2.1-multiLatency`：`https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.1-multiLatency`。资产为 `komari-theme-Glassmorphism-build-31fc054.zip`，下载复核 SHA-256 为 `C25AF6AB410642240F82478779994CC318587EFAC310A57AC8C84A699B57F8C8`，包内 `short` 为 `Glassmorphism-multiLatency`。
 - 已部署至 RackNerd `23.95.207.75:5222`：原数据库和 `Glassmorphism` 主题已备份到 `/var/lib/komari/backups/theme-multiLatency-20260718`，新目录为 `/var/lib/komari/data/theme/Glassmorphism-multiLatency`。数据库 `configs.theme` 已更新为 `"Glassmorphism-multiLatency"`，`komari.service` 重启后为 active，主题 manifest 本机 HTTP 校验为 200。
+- 部署后修复：首次从 root 临时目录移动主题时保留了 root:root / 700 顶层权限，导致 `komari` 服务账户无法可靠读取主题。现已改为 `komari:komari` / 755 并重启服务；`/api/public`、首页引用的主题 JS、NodeCard 和 HomeView 资源均返回 200。当前 Ping 任务已包含并分配北京、上海、广州、深圳电信/联通/移动；尚未配置教育网任务。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
