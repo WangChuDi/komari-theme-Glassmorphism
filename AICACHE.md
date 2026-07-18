@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：done，v3.2.1-multiLatency 已发布并部署到 RackNerd Komari，等待真实多 Ping 任务环境运行态确认
+- 状态：in-progress，正在发布 v3.2.2-multiLatency 以让每条运营商线路保留原版延迟/丢包历史条
 - 目标：让首页延迟/丢包显示支持按 Ping 任务自动识别并筛选电信、联通、移动、教育网线路，且允许用户在首页选择同一运营商下的具体任务。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：任务关键词识别、首页 Ping 聚合过滤、首页线路选择控件、主题配置归一化、旧 records 与新版 Metric Store 兼容。
@@ -27,6 +27,7 @@
 - 已发布 `v3.2.1-multiLatency`：`https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.1-multiLatency`。资产为 `komari-theme-Glassmorphism-build-31fc054.zip`，下载复核 SHA-256 为 `C25AF6AB410642240F82478779994CC318587EFAC310A57AC8C84A699B57F8C8`，包内 `short` 为 `Glassmorphism-multiLatency`。
 - 已部署至 RackNerd `23.95.207.75:5222`：原数据库和 `Glassmorphism` 主题已备份到 `/var/lib/komari/backups/theme-multiLatency-20260718`，新目录为 `/var/lib/komari/data/theme/Glassmorphism-multiLatency`。数据库 `configs.theme` 已更新为 `"Glassmorphism-multiLatency"`，`komari.service` 重启后为 active，主题 manifest 本机 HTTP 校验为 200。
 - 部署后修复：首次从 root 临时目录移动主题时保留了 root:root / 700 顶层权限，导致 `komari` 服务账户无法可靠读取主题。现已改为 `komari:komari` / 755 并重启服务；`/api/public`、首页引用的主题 JS、NodeCard 和 HomeView 资源均返回 200。当前 Ping 任务已包含并分配北京、上海、广州、深圳电信/联通/移动；尚未配置教育网任务。
+- 多线路条形显示修复：此前多线路首页只输出每个运营商的颜色圆点与平均数值。现改为运营商各自渲染延迟和丢包两组历史状态条，卡片和列表均覆盖；版本升为 `3.2.2-multiLatency`，待构建、发布与部署。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。

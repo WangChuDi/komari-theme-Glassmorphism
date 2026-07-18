@@ -434,18 +434,44 @@ function hasRegion(region: string | null | undefined): boolean {
             <div
               v-for="row in networkPingRows"
               :key="row.key"
-              class="grid grid-cols-[2.75rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5 rounded-sm px-1 py-0.5 text-[11px] leading-none transition-colors group-hover/panel:bg-slate-500/5"
+              class="grid grid-cols-[2.75rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5 rounded-sm px-1 py-1 text-[11px] leading-none transition-colors group-hover/panel:bg-slate-500/5"
               :title="row.tooltip"
             >
               <span class="truncate text-muted-foreground">{{ row.label }}</span>
-              <span class="inline-flex min-w-0 items-center gap-1 font-medium tabular-nums">
-                <span class="size-1.5 shrink-0 rounded-full" :class="row.latencyToneClass" />
-                <span class="min-w-0 truncate">{{ row.latencyDisplay }}</span>
-              </span>
-              <span class="inline-flex min-w-0 items-center gap-1 font-medium tabular-nums">
-                <span class="size-1.5 shrink-0 rounded-full" :class="row.lossToneClass" />
-                <span class="min-w-0 truncate">{{ row.lossDisplay }}</span>
-              </span>
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span class="flex items-center justify-between gap-1 text-[10px] tabular-nums">
+                  <span class="text-muted-foreground">延迟</span>
+                  <span class="font-medium">{{ row.latencyDisplay }}</span>
+                </span>
+                <div
+                  class="grid h-1.5 items-end gap-[1px]"
+                  :style="{ gridTemplateColumns: `repeat(${row.latencyBars.length}, minmax(0, 1fr))` }"
+                >
+                  <DataTooltip
+                    v-for="bar in row.latencyBars" :key="bar.key"
+                    placement="top" :content="bar.tooltip" class="h-full w-full"
+                  >
+                    <span class="block h-full w-full rounded-[1px]" :class="bar.className" />
+                  </DataTooltip>
+                </div>
+              </div>
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span class="flex items-center justify-between gap-1 text-[10px] tabular-nums">
+                  <span class="text-muted-foreground">丢包</span>
+                  <span class="font-medium">{{ row.lossDisplay }}</span>
+                </span>
+                <div
+                  class="grid h-1.5 items-end gap-[1px]"
+                  :style="{ gridTemplateColumns: `repeat(${row.lossBars.length}, minmax(0, 1fr))` }"
+                >
+                  <DataTooltip
+                    v-for="bar in row.lossBars" :key="bar.key"
+                    placement="top" :content="bar.tooltip" class="h-full w-full"
+                  >
+                    <span class="block h-full w-full rounded-[1px]" :class="bar.className" />
+                  </DataTooltip>
+                </div>
+              </div>
             </div>
           </div>
           <div v-else class="flex min-h-10 items-center justify-center text-[11px] text-muted-foreground">

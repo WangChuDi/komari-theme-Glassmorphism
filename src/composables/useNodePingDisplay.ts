@@ -27,6 +27,8 @@ export interface NodePingNetworkRow {
   key: KnownPingNetworkFamily
   label: string
   taskLabel: string
+  latencyBars: NodePingBar[]
+  lossBars: NodePingBar[]
   latencyDisplay: string
   lossDisplay: string
   latencyToneClass: string
@@ -255,6 +257,8 @@ export function useNodePingMultiDisplay(
           key: family,
           label: networkLabel,
           taskLabel,
+          latencyBars: display.latencyRenderBars.value,
+          lossBars: display.lossRenderBars.value,
           latencyDisplay: hasData
             ? `${Math.round(latency)} ms`
             : loading

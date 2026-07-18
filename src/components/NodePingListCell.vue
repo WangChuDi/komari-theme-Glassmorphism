@@ -51,14 +51,30 @@ const {
           :aria-label="row.tooltip"
         >
           <span class="truncate text-muted-foreground">{{ row.label }}</span>
-          <span class="inline-flex min-w-0 items-center gap-0.5 font-medium tabular-nums">
-            <span class="size-1 shrink-0 rounded-full" :class="row.latencyToneClass" />
-            <span class="min-w-0 truncate">{{ row.latencyDisplay }}</span>
-          </span>
-          <span class="inline-flex min-w-0 items-center gap-0.5 font-medium tabular-nums">
-            <span class="size-1 shrink-0 rounded-full" :class="row.lossToneClass" />
-            <span class="min-w-0 truncate">{{ row.lossDisplay }}</span>
-          </span>
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="truncate font-medium tabular-nums">{{ row.latencyDisplay }}</span>
+            <div
+              class="grid h-1 items-end gap-px"
+              :style="{ gridTemplateColumns: `repeat(${row.latencyBars.length}, minmax(0, 1fr))` }"
+            >
+              <span
+                v-for="bar in row.latencyBars" :key="bar.key"
+                class="block h-full w-full rounded-[1px]" :class="bar.className" :title="bar.tooltip"
+              />
+            </div>
+          </div>
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <span class="truncate font-medium tabular-nums">{{ row.lossDisplay }}</span>
+            <div
+              class="grid h-1 items-end gap-px"
+              :style="{ gridTemplateColumns: `repeat(${row.lossBars.length}, minmax(0, 1fr))` }"
+            >
+              <span
+                v-for="bar in row.lossBars" :key="bar.key"
+                class="block h-full w-full rounded-[1px]" :class="bar.className" :title="bar.tooltip"
+              />
+            </div>
+          </div>
         </div>
       </div>
       <span v-else class="text-[10px] text-muted-foreground">
