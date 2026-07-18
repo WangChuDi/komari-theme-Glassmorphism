@@ -1,10 +1,10 @@
 import type { MaybeRefOrGetter } from 'vue'
-import type { PingTaskSelection } from '@/utils/pingNetwork'
-import { computed } from 'vue'
+import type { KnownPingNetworkFamily, PingTaskSelection } from '@/utils/pingNetwork'
+import { computed, toValue } from 'vue'
 import { useNodePingStats } from '@/composables/useNodePingStats'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/helper'
-import { isKnownPingNetworkFamily } from '@/utils/pingNetwork'
+import { isKnownPingNetworkFamily, KNOWN_PING_NETWORK_FAMILIES, PING_NETWORK_LABELS } from '@/utils/pingNetwork'
 
 export type NodePingMetric = 'latency' | 'loss'
 
@@ -15,10 +15,25 @@ export interface NodePingBar {
 }
 
 interface UseNodePingDisplayOptions {
+  enabled?: MaybeRefOrGetter<boolean>
   loadingDisplayText?: string
   emptyDisplayText?: string
   loadingPanelTooltipText?: Partial<Record<NodePingMetric, string>>
   emptyPanelTooltipText?: Partial<Record<NodePingMetric, string>>
+  taskSelection?: MaybeRefOrGetter<PingTaskSelection | null | undefined>
+}
+
+export interface NodePingNetworkRow {
+  key: KnownPingNetworkFamily
+  label: string
+  taskLabel: string
+  latencyDisplay: string
+  lossDisplay: string
+  latencyToneClass: string
+  lossToneClass: string
+  tooltip: string
+  hasData: boolean
+  loading: boolean
 }
 
 const EMPTY_PING_BAR_COUNT = 20
@@ -56,7 +71,7 @@ export function useNodePingDisplay(
   const pingStatsEnabled = computed(() => {
     if (appStore.publicSettings?.record_enabled === false)
       return false
-    return appStore.publicSettings?.ping_record_preserve_time !== 0
+    return appStore.publicSettings?.ping_record_preserve_time !== 0 && (toValue(options.enabled) ?? true)
   })
 
   const pingStatsHours = computed(() => {
@@ -66,7 +81,7 @@ export function useNodePingDisplay(
     return 1
   })
 
-  const homePingTaskSelection = computed<PingTaskSelection>(() => {
+  const defaultHomePingTaskSelection = computed<PingTaskSelection>(() => {
     const mode = appStore.homePingNetworkMode
     const selectedTaskId = isKnownPingNetworkFamily(mode)
       ? Number(appStore.homePingTaskSelections[mode])
@@ -77,6 +92,9 @@ export function useNodePingDisplay(
       taskId: Number.isFinite(selectedTaskId) ? selectedTaskId : undefined,
       preferredKeywordsByFamily: appStore.homePingPreferredTaskKeywords,
     }
+  })
+  const homePingTaskSelection = computed<PingTaskSelection | null | undefined>(() => {
+    return toValue(options.taskSelection) ?? defaultHomePingTaskSelection.value
   })
 
   const pingStats = useNodePingStats(uuid, {
@@ -187,5 +205,88 @@ export function useNodePingDisplay(
     pingScopeLabel,
     latencyPanelTooltip,
     lossPanelTooltip,
+  }
+}
+
+export function useNodePingMultiDisplay(
+  uuid: MaybeRefOrGetter<string>,
+  options: UseNodePingDisplayOptions = {},
+) {
+  const appStore = useAppStore()
+
+  const networkDisplays = KNOWN_PING_NETWORK_FAMILIES.map((family) => {
+    const taskSelection = computed<PingTaskSelection>(() => {
+      const selectedTaskId = Number(appStore.homePingTaskSelections[family])
+      return {
+        mode: family,
+        taskId: Number.isFinite(selectedTaskId) ? selectedTaskId : undefined,
+        preferredKeywordsByFamily: appStore.homePingPreferredTaskKeywords,
+      }
+    })
+    return {
+      family,
+      display: useNodePingDisplay(uuid, {
+        ...options,
+        taskSelection,
+      }),
+    }
+  })
+
+  const rows = computed<NodePingNetworkRow[]>(() => {
+    const enabledFamilies = new Set(appStore.homePingMultiNetworkFamilies)
+
+    return networkDisplays
+      .filter(item => enabledFamilies.has(item.family))
+      .map(({ family, display }): NodePingNetworkRow => {
+        const networkLabel = PING_NETWORK_LABELS[family]
+        const taskLabel = display.pingScopeLabel.value
+        const hasData = display.pingStats.hasData.value
+        const loading = display.pingStats.loading.value
+        const latency = display.pingStats.avgLatency.value
+        const loss = display.pingStats.avgLoss.value
+        const scope = taskLabel && taskLabel !== networkLabel ? `${networkLabel} · ${taskLabel}` : networkLabel
+        const tooltip = hasData
+          ? `${scope}\n平均延迟 ${Math.round(latency)} ms\n平均丢包 ${loss.toFixed(1)}%`
+          : loading
+            ? `${scope}\n加载中`
+            : `${scope}\n无采样数据`
+
+        return {
+          key: family,
+          label: networkLabel,
+          taskLabel,
+          latencyDisplay: hasData
+            ? `${Math.round(latency)} ms`
+            : loading
+              ? options.loadingDisplayText ?? '加载中'
+              : options.emptyDisplayText ?? '-',
+          lossDisplay: hasData
+            ? `${loss.toFixed(1)}%`
+            : loading
+              ? options.loadingDisplayText ?? '加载中'
+              : options.emptyDisplayText ?? '-',
+          latencyToneClass: hasData ? getLatencyToneClass(latency) : 'bg-muted-foreground/15',
+          lossToneClass: hasData ? getLossToneClass(loss) : 'bg-muted-foreground/15',
+          tooltip,
+          hasData,
+          loading,
+        }
+      })
+      .filter(row => !appStore.homePingMultiHideEmpty || row.hasData || row.loading)
+  })
+
+  const anyLoading = computed(() => networkDisplays.some(item => item.display.pingStats.loading.value))
+  const hasAnyData = computed(() => rows.value.some(row => row.hasData))
+  const emptyText = computed(() => {
+    if (anyLoading.value)
+      return options.loadingDisplayText ?? '加载中'
+    return options.emptyDisplayText ?? '暂无线路'
+  })
+
+  return {
+    rows,
+    anyLoading,
+    hasAnyData,
+    emptyText,
   }
 }

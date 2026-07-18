@@ -6,7 +6,7 @@ import { useStorageAsync } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { getAuthSession, requirePermission, setAuthSessionFromLogin, verifyLogin } from '@/services/auth.service'
-import { KNOWN_PING_NETWORK_FAMILIES, normalizePingNetworkMode, parsePingTaskPreferenceText } from '@/utils/pingNetwork'
+import { isKnownPingNetworkFamily, KNOWN_PING_NETWORK_FAMILIES, normalizePingNetworkMode, parsePingTaskPreferenceText } from '@/utils/pingNetwork'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
 export type ManagedThemeMode = 'beijing' | 'light' | 'dark'
@@ -93,6 +93,7 @@ type RpcTransportMode = 'websocket' | 'http'
 type EarthRenderer = 'realistic' | 'cobe' | 'tiled'
 type GlassColorPreset = 'emerald' | 'soft' | 'contrast' | 'midnight' | 'custom'
 type ColorVisionMode = 'default' | 'accessible'
+type HomePingDisplayMode = 'single' | 'multi'
 export type HomePingNetworkMode = PingNetworkMode
 export type ChartDashboardCardKey
   = | 'cpu'
@@ -250,6 +251,13 @@ const DEFAULT_NODE_LIST_METADATA_FIELDS: NodeListMetadataField[] = [
   'provider',
   'region',
   'asn',
+]
+
+const DEFAULT_HOME_PING_MULTI_NETWORKS: KnownPingNetworkFamily[] = [
+  'telecom',
+  'unicom',
+  'mobile',
+  'education',
 ]
 
 const DEFAULT_CHART_DASHBOARD_CARDS: ChartDashboardCardKey[] = ['cpu', 'memory', 'disk', 'network', 'gpu', 'connections', 'process']
@@ -555,6 +563,16 @@ const COLOR_VISION_MODE_ALIASES: Record<string, ColorVisionMode> = {
   色觉友好: 'accessible',
 }
 
+const HOME_PING_DISPLAY_MODE_ALIASES: Record<string, HomePingDisplayMode> = {
+  single: 'single',
+  单线路: 'single',
+  单线: 'single',
+  multi: 'multi',
+  多线路: 'multi',
+  多线: 'multi',
+  多网: 'multi',
+}
+
 const DEFAULT_GLASS_CUSTOM_COLORS: GlassCustomColors = {
   lightCard: '#f1f5f9bd',
   lightControl: '#e2e8f0c2',
@@ -754,6 +772,35 @@ function parseKeyList<T extends string>(rawValue: unknown, isValid: (value: stri
   }
 
   return parsedKeys.length > 0 ? parsedKeys : [...fallback]
+}
+
+function parseHomePingDisplayMode(value: unknown): HomePingDisplayMode {
+  if (typeof value !== 'string')
+    return 'multi'
+
+  return HOME_PING_DISPLAY_MODE_ALIASES[value.trim()] ?? 'multi'
+}
+
+function parseHomePingMultiNetworks(rawValue: unknown): KnownPingNetworkFamily[] {
+  const parsedFamilies: KnownPingNetworkFamily[] = []
+  const seenFamilies = new Set<KnownPingNetworkFamily>()
+
+  const rawItems = Array.isArray(rawValue)
+    ? rawValue
+    : typeof rawValue === 'string'
+      ? rawValue.split(KEY_LIST_SEPARATOR_REGEX)
+      : []
+
+  for (const item of rawItems) {
+    const mode = typeof item === 'string' ? normalizePingNetworkMode(item.trim(), 'auto') : 'auto'
+    if (!isKnownPingNetworkFamily(mode) || seenFamilies.has(mode))
+      continue
+
+    parsedFamilies.push(mode)
+    seenFamilies.add(mode)
+  }
+
+  return parsedFamilies.length > 0 ? parsedFamilies : [...DEFAULT_HOME_PING_MULTI_NETWORKS]
 }
 
 function parseChartDashboardTemplate(rawValue: unknown): ChartDashboardTemplate {
@@ -1099,6 +1146,12 @@ const useAppStore = defineStore('app', () => {
 
   const homePingNetworkControlsEnabled = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'homePingNetworkControlsEnabled', true))
 
+  const homePingDisplayMode = computed<HomePingDisplayMode>(() => parseHomePingDisplayMode(themeSettings.value.homePingDisplayMode))
+
+  const homePingMultiNetworkFamilies = computed<KnownPingNetworkFamily[]>(() => parseHomePingMultiNetworks(themeSettings.value.homePingMultiNetworks))
+
+  const homePingMultiHideEmpty = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'homePingMultiHideEmpty', true))
+
   const defaultHomePingNetworkMode = computed<HomePingNetworkMode>(() => {
     return normalizePingNetworkMode(themeSettings.value.homePingDefaultNetwork, 'auto')
   })
@@ -1363,6 +1416,9 @@ const useAppStore = defineStore('app', () => {
     homeQuickControlOrder,
     homeQuickDefaultControl,
     homePingNetworkControlsEnabled,
+    homePingDisplayMode,
+    homePingMultiNetworkFamilies,
+    homePingMultiHideEmpty,
     defaultHomePingNetworkMode,
     homePingNetworkMode,
     homePingTaskSelections,

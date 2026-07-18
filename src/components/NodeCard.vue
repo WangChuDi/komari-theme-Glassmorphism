@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { CardX } from '@/components/ui/card-x'
 import { DataTooltip } from '@/components/ui/data-tooltip'
 import { ProgressThin } from '@/components/ui/progress-thin'
-import { useNodePingDisplay } from '@/composables/useNodePingDisplay'
+import { useNodePingDisplay, useNodePingMultiDisplay } from '@/composables/useNodePingDisplay'
 import { useAppStore } from '@/stores/app'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig, formatDateTime, getStatus, getUptimeDays } from '@/utils/helper'
 import { getDiskPercentage, getMemoryPercentage, getTrafficUsed, getTrafficUsedPercentage, hasTrafficLimit } from '@/utils/nodeMetricsHelper'
@@ -51,6 +51,15 @@ const nodeCardMetricBoxClass = computed(() => isMiniNodeCard.value
   : appStore.nodeCardSize === 'compact' ? 'px-1.5 py-1.5' : 'px-2 py-1.5')
 const nodeCardPanelClass = computed(() => appStore.nodeCardSize === 'large' ? 'h-14' : appStore.nodeCardSize === 'comfortable' ? 'h-12' : isMiniNodeCard.value ? 'h-7' : 'h-11')
 const nodeCardPingPanelClass = computed(() => isMiniNodeCard.value ? 'gap-1 p-1' : 'gap-1.5 p-2')
+const nodeCardMultiPingPanelClass = computed(() => {
+  if (isMiniNodeCard.value)
+    return 'min-h-16 p-1.5'
+  if (appStore.nodeCardSize === 'large')
+    return 'min-h-24 p-2.5'
+  if (appStore.nodeCardSize === 'comfortable')
+    return 'min-h-22 p-2'
+  return 'min-h-20 p-2'
+})
 
 const formatBytes = (bytes: number) => formatBytesWithConfig(bytes, appStore.byteDecimals)
 const formatBytesPerSecond = (bytes: number) => formatBytesPerSecondWithConfig(bytes, appStore.byteDecimals)
@@ -66,6 +75,7 @@ const swapTooltip = computed(() => {
 })
 const diskPercentage = computed(() => getDiskPercentage(props.node))
 const diskStatus = computed(() => getStatus(diskPercentage.value))
+const showMultiPingDisplay = computed(() => appStore.homePingDisplayMode === 'multi')
 
 const {
   latencyRenderBars,
@@ -75,7 +85,15 @@ const {
   pingScopeLabel,
   latencyPanelTooltip,
   lossPanelTooltip,
-} = useNodePingDisplay(() => props.node.uuid)
+} = useNodePingDisplay(() => props.node.uuid, {
+  enabled: computed(() => !showMultiPingDisplay.value),
+})
+const {
+  rows: networkPingRows,
+  emptyText: networkPingEmptyText,
+} = useNodePingMultiDisplay(() => props.node.uuid, {
+  enabled: showMultiPingDisplay,
+})
 const latencyPanelLabel = computed(() => pingScopeLabel.value ? `${pingScopeLabel.value}延迟` : '延迟')
 const lossPanelLabel = computed(() => pingScopeLabel.value ? `${pingScopeLabel.value}丢包` : '丢包')
 
@@ -397,7 +415,45 @@ function hasRegion(region: string | null | undefined): boolean {
         </div>
 
         <!-- 延迟 + 丢包 -->
-        <div class="grid grid-cols-2 gap-1.5">
+        <button
+          v-if="showMultiPingDisplay"
+          type="button"
+          class="group/panel relative flex w-full flex-col rounded-lg bg-slate-500/5"
+          :class="[nodeCardMultiPingPanelClass, !props.node.online ? 'blur-xs opacity-50' : '']"
+          :aria-label="`${props.node.name} 多线路延迟和丢包监测`"
+          @click.stop="emit('pingClick')"
+        >
+          <div class="mb-1 flex items-center justify-between gap-2 text-[11px] leading-none">
+            <span class="inline-flex min-w-0 items-center gap-1 text-muted-foreground">
+              <Icon icon="tabler:route-square" width="11" height="11" class="shrink-0" />
+              <span class="truncate">多网延迟</span>
+            </span>
+            <span class="shrink-0 text-[10px] text-muted-foreground/70">延迟 / 丢包</span>
+          </div>
+          <div v-if="networkPingRows.length" class="grid gap-1">
+            <div
+              v-for="row in networkPingRows"
+              :key="row.key"
+              class="grid grid-cols-[2.75rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-1.5 rounded-sm px-1 py-0.5 text-[11px] leading-none transition-colors group-hover/panel:bg-slate-500/5"
+              :title="row.tooltip"
+            >
+              <span class="truncate text-muted-foreground">{{ row.label }}</span>
+              <span class="inline-flex min-w-0 items-center gap-1 font-medium tabular-nums">
+                <span class="size-1.5 shrink-0 rounded-full" :class="row.latencyToneClass" />
+                <span class="min-w-0 truncate">{{ row.latencyDisplay }}</span>
+              </span>
+              <span class="inline-flex min-w-0 items-center gap-1 font-medium tabular-nums">
+                <span class="size-1.5 shrink-0 rounded-full" :class="row.lossToneClass" />
+                <span class="min-w-0 truncate">{{ row.lossDisplay }}</span>
+              </span>
+            </div>
+          </div>
+          <div v-else class="flex min-h-10 items-center justify-center text-[11px] text-muted-foreground">
+            {{ networkPingEmptyText }}
+          </div>
+        </button>
+
+        <div v-else class="grid grid-cols-2 gap-1.5">
           <button
             type="button"
             class="group/panel relative flex flex-col rounded-lg bg-slate-500/5"

@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：done，等待真实 Komari 多 Ping 任务环境运行态确认
+- 状态：done，等待部署到正确 Komari 站点并做真实多 Ping 任务环境运行态确认
 - 目标：让首页延迟/丢包显示支持按 Ping 任务自动识别并筛选电信、联通、移动、教育网线路，且允许用户在首页选择同一运营商下的具体任务。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：任务关键词识别、首页 Ping 聚合过滤、首页线路选择控件、主题配置归一化、旧 records 与新版 Metric Store 兼容。
@@ -29,6 +29,9 @@
 - 首页新增“延迟”线路控制条：自动、全部、电信、联通、移动、教育网；当公开任务列表可用且同运营商下存在多个任务时显示具体任务下拉，例如广东电信 / 北京电信。
 - 托管设置新增 `homePingNetworkControlsEnabled`、`homePingDefaultNetwork`、`homePingPreferredTasks`；用户在首页的手动选择保存在本地浏览器，优先于托管默认。
 - `PingChart.vue` 保持完整多任务图表，并给任务卡显示识别出的运营商标签。
+- 按用户反馈补强：首页节点卡片和列表支持“多线路”直显，每行展示电信 / 联通 / 移动 / 教育网各自的平均延迟与丢包；点击仍打开完整 Ping 图。
+- 主题托管设置新增 `homePingDisplayMode`（多线路 / 单线路，默认多线路）、`homePingMultiNetworks`（多线路显示顺序）、`homePingMultiHideEmpty`（隐藏无数据线路）。`homePingNetworkControlsEnabled` 在多线路模式下显示每个运营商的具体任务下拉；单线路模式仍保留自动 / 全部 / 各运营商切换。
+- 多线路统计复用同一个节点共享 Ping 历史缓存；隐藏的单线路/多线路模式不会保留额外订阅，避免节点较多时增加不必要的前端 watcher。
 
 ## 验证记录
 
@@ -36,6 +39,7 @@
 - `npm run lint`：通过。第一次运行提示 `pingNetwork.ts` 中正则应提升到模块作用域，已修复后重跑通过。
 - `npm run build`：通过，包含 `vue-tsc --build` 和 Vite 打包；仅出现既有 `@vueuse/core` PURE 注释警告、大 `globe` chunk 警告，以及当前空 Git 仓库 ownership 导致构建 zip 短 SHA 为 `unknown` 的提示。
 - 环境说明：本机没有 `bun`，本次使用 `npm install --no-package-lock` 临时安装依赖并用 npm 脚本验证；验证后已清理 `node_modules`、`dist`、本地 zip 和 `.eslintcache`。
+- 多线路直显补强后复验：`node -e` 解析 `komari-theme.json` 通过；`npm run lint` 通过；`npm run build` 通过，仍仅有既有 `@vueuse/core` PURE 注释警告、`globe` 大 chunk 警告，以及沙箱 Git ownership 导致本地 zip 名为 `unknown` 的提示。
 
 ## 交接说明
 
@@ -47,11 +51,14 @@
 - 已 fork 到 `https://github.com/WangChuDi/komari-theme-Glassmorphism`，本地修改推送到 fork 分支 `multi-network-ping`。
 - 已创建 Release `v3.2.0-multi-network`：`https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.0-multi-network`。
 - Release 资产 `komari-theme-Glassmorphism-build-e33be5f.zip` 下载复核通过：SHA-256 `217C0A7F94BD615D01E65A96C06C1E28DCFEEEF5B3EF5AB21DEEE91C86B7115A`，zip 内含 `komari-theme.json`、`preview.png`、`dist/index.html`，包内版本 `3.2.0`，manifest URL 指向 `https://github.com/WangChuDi/komari-theme-Glassmorphism`。
+- 曾误将本机 SSH 配置别名 `vps`（`23.95.207.75:5222`）当作目标 Komari 站点部署；用户指出不是目标网站后已立即回滚。
+- 误部署回滚结果：`/var/lib/komari/data/theme/Glassmorphism` 已恢复为原主题文件，manifest URL 重新指向 `https://github.com/sanrokamlan-prog/komari-theme-Glassmorphism`；误部署的新目录保留为 `/var/lib/komari/data/theme/Glassmorphism.misdeploy-20260718-171301`；`komari.service` 已重启且 active。
+- 多线路直显代码已完成但尚未重新提交/发布新的 GitHub Release。
 
 未完成：
 
 - 尚未在真实 Komari 后端、多任务名如“广东电信 / 北京电信 / 联通 / 移动 / 教育网”的数据集上做浏览器运行态验证。
-- 尚未切换用户 VPS 上的 Komari 主题；当前缺少 Codex 可用的 VPS SSH 连接信息或已登录的 Komari 后台会话。
+- 尚未部署到正确 Komari 站点；需要用户提供正确 SSH 别名、完整 SSH 命令、面板文件管理入口，或明确说明本机 SSH 配置中哪个 Host 才是目标。
 
 下一步：
 

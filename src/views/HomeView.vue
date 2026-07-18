@@ -2,6 +2,7 @@
 import type { PermissionKey } from '@/services/auth.service'
 import type { HomePingNetworkMode, HomeQuickControlKey } from '@/stores/app'
 import type { NodeData } from '@/stores/nodes'
+import type { KnownPingNetworkFamily } from '@/utils/pingNetwork'
 import type { PingTaskInfo } from '@/utils/rpc'
 import { Icon } from '@iconify/vue'
 import { useDebounceFn } from '@vueuse/core'
@@ -156,6 +157,8 @@ const homePingFamilyCounts = computed(() => {
 const homePingKnownTaskCount = computed(() => Object.values(homePingFamilyCounts.value).reduce((sum, count) => sum + count, 0))
 const showHomePingTaskCounts = computed(() => homePingTaskMetas.value.length > 0)
 const showPingNetworkControls = computed(() => appStore.homePingNetworkControlsEnabled && activeHomeTool.value === 'nodes')
+const showSinglePingNetworkControls = computed(() => showPingNetworkControls.value && appStore.homePingDisplayMode === 'single')
+const showMultiPingNetworkControls = computed(() => showPingNetworkControls.value && appStore.homePingDisplayMode === 'multi')
 const pingNetworkControls = computed<PingNetworkControlOption[]>(() => [
   { key: 'auto', label: '自动', icon: 'tabler:sparkles', count: homePingKnownTaskCount.value },
   { key: 'all', label: '全部', icon: 'tabler:stack-2', count: homePingTaskMetas.value.length },
@@ -167,15 +170,34 @@ const pingNetworkControls = computed<PingNetworkControlOption[]>(() => [
   })),
 ])
 const activePingNetworkFamily = computed(() => isKnownPingNetworkFamily(appStore.homePingNetworkMode) ? appStore.homePingNetworkMode : null)
+const pingTaskOptionsByFamily = computed(() => {
+  const options = {} as Record<KnownPingNetworkFamily, Array<{ value: string, label: string }>>
+  for (const family of KNOWN_PING_NETWORK_FAMILIES) {
+    options[family] = homePingTaskMetas.value
+      .filter(task => task.family === family)
+      .map(task => ({ value: String(task.id), label: task.name }))
+      .sort((left, right) => left.label.localeCompare(right.label, 'zh-CN'))
+  }
+  return options
+})
 const activePingTaskOptions = computed(() => {
   const family = activePingNetworkFamily.value
-  if (!family)
-    return []
-
-  return homePingTaskMetas.value
-    .filter(task => task.family === family)
-    .map(task => ({ value: String(task.id), label: task.name }))
-    .sort((left, right) => left.label.localeCompare(right.label, 'zh-CN'))
+  return family ? pingTaskOptionsByFamily.value[family] : []
+})
+const multiPingNetworkBadges = computed(() => appStore.homePingMultiNetworkFamilies.map(family => ({
+  family,
+  label: PING_NETWORK_LABELS[family],
+  count: homePingFamilyCounts.value[family],
+})))
+const multiPingTaskSelectOptions = computed(() => {
+  return appStore.homePingMultiNetworkFamilies
+    .map(family => ({
+      family,
+      label: PING_NETWORK_LABELS[family],
+      selected: appStore.homePingTaskSelections[family] ?? '',
+      options: pingTaskOptionsByFamily.value[family] ?? [],
+    }))
+    .filter(item => item.options.length > 1)
 })
 const selectedHomePingTaskId = computed(() => {
   const family = activePingNetworkFamily.value
@@ -415,6 +437,10 @@ function setHomePingTaskSelection(event: Event) {
   if (!family)
     return
 
+  setHomePingTaskSelectionForFamily(family, event)
+}
+
+function setHomePingTaskSelectionForFamily(family: KnownPingNetworkFamily, event: Event) {
   const taskId = event.target instanceof HTMLSelectElement ? event.target.value : ''
   appStore.setHomePingTaskSelection(family, taskId)
   void recordVisitorEvent({
@@ -573,45 +599,84 @@ const nodeCardGridClass = computed(() => {
                 </div>
 
                 <div
-                  v-if="showPingNetworkControls"
+                  v-if="showSinglePingNetworkControls || showMultiPingNetworkControls"
                   class="flex h-8 w-max items-center gap-1 rounded-md bg-background/50 px-1 backdrop-blur-xl pointer-events-auto"
                 >
                   <span class="inline-flex h-6.5 flex-none shrink-0 items-center gap-1 px-1.5 text-xs text-muted-foreground">
                     <Icon icon="tabler:route-square" :width="12" :height="12" />
-                    <span>延迟</span>
+                    <span>{{ showMultiPingNetworkControls ? '多网延迟' : '延迟' }}</span>
                   </span>
-                  <button
-                    v-for="control in pingNetworkControls" :key="control.key"
-                    type="button"
-                    class="inline-flex h-6.5 flex-none shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                    :class="appStore.homePingNetworkMode === control.key ? 'bg-background text-selection shadow-sm' : ''"
-                    :aria-pressed="appStore.homePingNetworkMode === control.key"
-                    :aria-label="`切换首页延迟线路到${control.label}`"
-                    @click="setHomePingNetworkMode(control.key)"
-                  >
-                    <Icon :icon="control.icon" :width="12" :height="12" />
-                    <span>{{ control.label }}</span>
-                    <span
-                      v-if="showHomePingTaskCounts"
-                      class="rounded-full bg-slate-500/10 px-1 text-[10px] tabular-nums text-foreground/65"
+
+                  <template v-if="showSinglePingNetworkControls">
+                    <button
+                      v-for="control in pingNetworkControls" :key="control.key"
+                      type="button"
+                      class="inline-flex h-6.5 flex-none shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      :class="appStore.homePingNetworkMode === control.key ? 'bg-background text-selection shadow-sm' : ''"
+                      :aria-pressed="appStore.homePingNetworkMode === control.key"
+                      :aria-label="`切换首页延迟线路到${control.label}`"
+                      @click="setHomePingNetworkMode(control.key)"
                     >
-                      {{ control.count }}
+                      <Icon :icon="control.icon" :width="12" :height="12" />
+                      <span>{{ control.label }}</span>
+                      <span
+                        v-if="showHomePingTaskCounts"
+                        class="rounded-full bg-slate-500/10 px-1 text-[10px] tabular-nums text-foreground/65"
+                      >
+                        {{ control.count }}
+                      </span>
+                    </button>
+                    <select
+                      v-if="activePingTaskOptions.length > 1"
+                      class="h-6.5 max-w-36 rounded-sm border-none bg-background px-2 text-xs text-foreground shadow-sm outline-none"
+                      :value="selectedHomePingTaskId"
+                      :aria-label="activePingTaskSelectLabel"
+                      @change="setHomePingTaskSelection"
+                    >
+                      <option value="">
+                        自动
+                      </option>
+                      <option v-for="task in activePingTaskOptions" :key="task.value" :value="task.value">
+                        {{ task.label }}
+                      </option>
+                    </select>
+                  </template>
+
+                  <template v-else>
+                    <span
+                      v-for="item in multiPingNetworkBadges"
+                      :key="item.family"
+                      class="inline-flex h-6.5 flex-none shrink-0 items-center gap-1 rounded-sm px-2 text-xs text-muted-foreground"
+                    >
+                      <span>{{ item.label }}</span>
+                      <span
+                        v-if="showHomePingTaskCounts"
+                        class="rounded-full bg-slate-500/10 px-1 text-[10px] tabular-nums text-foreground/65"
+                      >
+                        {{ item.count }}
+                      </span>
                     </span>
-                  </button>
-                  <select
-                    v-if="activePingTaskOptions.length > 1"
-                    class="h-6.5 max-w-36 rounded-sm border-none bg-background px-2 text-xs text-foreground shadow-sm outline-none"
-                    :value="selectedHomePingTaskId"
-                    :aria-label="activePingTaskSelectLabel"
-                    @change="setHomePingTaskSelection"
-                  >
-                    <option value="">
-                      自动
-                    </option>
-                    <option v-for="task in activePingTaskOptions" :key="task.value" :value="task.value">
-                      {{ task.label }}
-                    </option>
-                  </select>
+                    <label
+                      v-for="item in multiPingTaskSelectOptions"
+                      :key="item.family"
+                      class="inline-flex h-6.5 flex-none shrink-0 items-center gap-1 rounded-sm bg-background px-1.5 text-xs text-muted-foreground shadow-sm"
+                    >
+                      <span class="shrink-0">{{ item.label }}</span>
+                      <select
+                        class="h-5 max-w-28 border-none bg-transparent text-xs text-foreground outline-none"
+                        :value="item.selected"
+                        :aria-label="`${item.label}具体 Ping 任务`"
+                        @change="setHomePingTaskSelectionForFamily(item.family, $event)"
+                      >
+                        <option value="">
+                          自动
+                        </option>
+                        <option v-for="task in item.options" :key="task.value" :value="task.value">
+                          {{ task.label }}
+                        </option>
+                      </select>
+                    </label>
+                  </template>
                 </div>
               </div>
             </div>

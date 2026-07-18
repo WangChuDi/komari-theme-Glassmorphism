@@ -69,7 +69,18 @@ const baseColumns: ColumnConfig[] = [
   { key: 'rate', label: '速率', width: '88px', sortable: true },
 ]
 
-const columns = computed(() => baseColumns.filter(col => col.key !== 'metadata' || appStore.nodeListMetadataEnabled))
+const columns = computed(() => baseColumns
+  .filter(col => col.key !== 'metadata' || appStore.nodeListMetadataEnabled)
+  .map((col) => {
+    if (col.key !== 'uptime' || appStore.homePingDisplayMode !== 'multi')
+      return col
+
+    return {
+      ...col,
+      label: '运行/延迟',
+      width: '156px',
+    }
+  }))
 const providerMetadataEnabled = computed(() => {
   return appStore.nodeListMetadataEnabled
     && appStore.nodeListMetadataFields.some(field => field === 'provider' || field === 'city' || field === 'asn')
