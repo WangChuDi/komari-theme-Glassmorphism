@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：done，等待部署到正确 Komari 站点并做真实多 Ping 任务环境运行态确认
+- 状态：done，v3.2.1 已发布，等待部署到正确 Komari 站点并做真实多 Ping 任务环境运行态确认
 - 目标：让首页延迟/丢包显示支持按 Ping 任务自动识别并筛选电信、联通、移动、教育网线路，且允许用户在首页选择同一运营商下的具体任务。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：任务关键词识别、首页 Ping 聚合过滤、首页线路选择控件、主题配置归一化、旧 records 与新版 Metric Store 兼容。
@@ -39,7 +39,8 @@
 - `npm run lint`：通过。第一次运行提示 `pingNetwork.ts` 中正则应提升到模块作用域，已修复后重跑通过。
 - `npm run build`：通过，包含 `vue-tsc --build` 和 Vite 打包；仅出现既有 `@vueuse/core` PURE 注释警告、大 `globe` chunk 警告，以及当前空 Git 仓库 ownership 导致构建 zip 短 SHA 为 `unknown` 的提示。
 - 环境说明：本机没有 `bun`，本次使用 `npm install --no-package-lock` 临时安装依赖并用 npm 脚本验证；验证后已清理 `node_modules`、`dist`、本地 zip 和 `.eslintcache`。
-- 多线路直显补强后复验：`node -e` 解析 `komari-theme.json` 通过；`npm run lint` 通过；`npm run build` 通过，仍仅有既有 `@vueuse/core` PURE 注释警告、`globe` 大 chunk 警告，以及沙箱 Git ownership 导致本地 zip 名为 `unknown` 的提示。
+- 多线路直显补强后复验：`node -e` 解析 `komari-theme.json` 通过；`npm run lint` 通过；`npm run build` 通过，仍仅有既有 `@vueuse/core` PURE 注释警告和 `globe` 大 chunk 警告。
+- 正式发布构建使用临时 `GIT_CONFIG_COUNT` safe.directory 环境变量复跑 `npm run build`，生成 `komari-theme-Glassmorphism-build-7de31fd.zip`；包内 manifest 版本 `3.2.1`，URL 指向 fork。
 
 ## 交接说明
 
@@ -53,7 +54,9 @@
 - Release 资产 `komari-theme-Glassmorphism-build-e33be5f.zip` 下载复核通过：SHA-256 `217C0A7F94BD615D01E65A96C06C1E28DCFEEEF5B3EF5AB21DEEE91C86B7115A`，zip 内含 `komari-theme.json`、`preview.png`、`dist/index.html`，包内版本 `3.2.0`，manifest URL 指向 `https://github.com/WangChuDi/komari-theme-Glassmorphism`。
 - 曾误将本机 SSH 配置别名 `vps`（`23.95.207.75:5222`）当作目标 Komari 站点部署；用户指出不是目标网站后已立即回滚。
 - 误部署回滚结果：`/var/lib/komari/data/theme/Glassmorphism` 已恢复为原主题文件，manifest URL 重新指向 `https://github.com/sanrokamlan-prog/komari-theme-Glassmorphism`；误部署的新目录保留为 `/var/lib/komari/data/theme/Glassmorphism.misdeploy-20260718-171301`；`komari.service` 已重启且 active。
-- 多线路直显代码已完成但尚未重新提交/发布新的 GitHub Release。
+- 多线路直显代码已提交并推送到 fork 分支 `multi-network-ping`：`7de31fdf850d73cf4f176b1882b05e5d1c8e350b`。
+- 已创建 Release `v3.2.1-multi-network`：`https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.1-multi-network`。
+- Release 资产 `komari-theme-Glassmorphism-build-7de31fd.zip` 下载复核通过：SHA-256 `D91B5C753583335214D9FD9C85DFBA6D368CD5F54A0D6E3B14F668101FFF6DFA`，包内版本 `3.2.1`。
 
 未完成：
 
@@ -62,8 +65,8 @@
 
 下一步：
 
-1. 在真实站点创建或使用含运营商关键词的 Ping 任务，打开首页确认控制条计数、具体任务下拉和节点卡 tooltip。
-2. 切换“电信 -> 广东电信 / 北京电信”确认延迟数值、丢包百分比和 20 格历史条同步变化。
+1. 在真实站点创建或使用含运营商关键词的 Ping 任务，安装 `v3.2.1-multi-network` 后打开首页确认节点卡片/列表直接显示电信、联通、移动、教育网多行延迟和丢包。
+2. 在主题设置里调整 `homePingMultiNetworks` 和 `homePingMultiHideEmpty`，确认显示顺序和无数据线路隐藏符合预期；如有广东电信 / 北京电信等多任务，通过首页顶部每运营商下拉确认选择生效。
 3. 打开完整 Ping 弹窗确认所有任务仍可多选查看，运营商标签识别符合预期。
 4. 获取 VPS SSH 或 Komari 后台登录入口后，将主题切换到 fork Release `v3.2.0-multi-network`。
 
