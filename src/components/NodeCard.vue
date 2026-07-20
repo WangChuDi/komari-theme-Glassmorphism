@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NodeData } from '@/stores/nodes'
+import type { NodePingQualitySummary, PingQualityMetricStats, PingQualityPeriodStats } from '@/types/pingQuality'
 import { Icon } from '@iconify/vue'
 import { computed } from 'vue'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +17,7 @@ import { formatCurrencyValue, formatPriceWithCycle, getDaysUntilExpired, getExpi
 
 const props = withDefaults(defineProps<{
   node: NodeData
+  quality?: NodePingQualitySummary
   reduceMotion?: boolean
 }>(), {
   reduceMotion: false,
@@ -96,6 +98,39 @@ const {
 })
 const latencyPanelLabel = computed(() => pingScopeLabel.value ? `${pingScopeLabel.value}延迟` : '延迟')
 const lossPanelLabel = computed(() => pingScopeLabel.value ? `${pingScopeLabel.value}丢包` : '丢包')
+const qualityRows = computed(() => props.quality?.rows ?? [])
+
+function formatQualityValue(value: number | null, unit: 'ms' | '%'): string {
+  if (value === null)
+    return '-'
+  if (unit === 'ms')
+    return `${Math.round(value)}ms`
+  if (value > 0 && value < 0.01)
+    return '<0.01%'
+  const digits = value >= 10 ? 1 : 2
+  return `${Number(value.toFixed(digits))}%`
+}
+
+function formatQualityCell(period: PingQualityPeriodStats): string {
+  return `${formatQualityValue(period.latency.avg, 'ms')} · ${formatQualityValue(period.loss.avg, '%')}`
+}
+
+function formatQualityStats(label: string, stats: PingQualityMetricStats, unit: 'ms' | '%'): string {
+  const values = [`均值 ${formatQualityValue(stats.avg, unit)}`]
+  if (appStore.pingAdvancedStatsEnabled) {
+    values.push(`P95 ${formatQualityValue(stats.p95, unit)}`)
+    values.push(`P99 ${formatQualityValue(stats.p99, unit)}`)
+  }
+  return `${label}：${values.join(' / ')}`
+}
+
+function qualityTooltip(periodLabel: string, period: PingQualityPeriodStats): string {
+  return [
+    `${periodLabel}（北京时间）`,
+    formatQualityStats('延迟', period.latency, 'ms'),
+    formatQualityStats('丢包', period.loss, '%'),
+  ].join('\n')
+}
 
 const trafficUsedPercentage = computed(() => getTrafficUsedPercentage(props.node))
 const trafficUsed = computed(() => getTrafficUsed(props.node))
@@ -535,6 +570,45 @@ function hasRegion(region: string | null | undefined): boolean {
               </DataTooltip>
             </div>
           </button>
+        </div>
+
+        <div v-if="qualityRows.length" class="rounded-lg bg-slate-500/5 p-2">
+          <div class="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 text-[10px] leading-none text-muted-foreground">
+            <span class="inline-flex items-center gap-1 font-medium text-foreground/80">
+              <Icon icon="tabler:chart-dots-3" width="11" height="11" class="shrink-0" />
+              <span>7 日质量</span>
+            </span>
+            <span class="text-center">高峰</span>
+            <span class="text-center">非高峰</span>
+          </div>
+          <div class="mt-1 grid gap-0.5">
+            <div
+              v-for="row in qualityRows"
+              :key="row.key"
+              class="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 rounded-sm px-0.5 py-1 text-[10px] leading-none"
+              :class="row.key === 'overall' ? 'mt-0.5 border-t border-border/40 pt-1.5 font-semibold' : ''"
+            >
+              <span class="truncate text-muted-foreground" :title="row.label">{{ row.label }}</span>
+              <DataTooltip
+                placement="top"
+                :content="qualityTooltip('高峰 20:00-24:00', row.peak)"
+                content-class="whitespace-pre-line text-left leading-snug"
+              >
+                <span class="block truncate text-center tabular-nums" :class="row.key === 'overall' ? 'text-foreground' : ''">
+                  {{ formatQualityCell(row.peak) }}
+                </span>
+              </DataTooltip>
+              <DataTooltip
+                placement="top"
+                :content="qualityTooltip('非高峰 00:00-20:00', row.offPeak)"
+                content-class="whitespace-pre-line text-left leading-snug"
+              >
+                <span class="block truncate text-center tabular-nums" :class="row.key === 'overall' ? 'text-foreground' : ''">
+                  {{ formatQualityCell(row.offPeak) }}
+                </span>
+              </DataTooltip>
+            </div>
+          </div>
         </div>
 
         <!-- 自定义标签 -->
