@@ -560,6 +560,18 @@ function averageMetric(records: PingRecord[]): number | null {
   return records.reduce((total, record) => total + record.value, 0) / records.length
 }
 
+function percentile(values: number[], ratio: number): number | null {
+  if (!values.length)
+    return null
+  const sorted = [...values].sort((left, right) => left - right)
+  const position = Math.min(sorted.length - 1, Math.max(0, (sorted.length - 1) * ratio))
+  const lower = Math.floor(position)
+  const upper = Math.ceil(position)
+  const lowerValue = sorted[lower]!
+  const upperValue = sorted[upper]!
+  return lower === upper ? lowerValue : lowerValue + (upperValue - lowerValue) * (position - lower)
+}
+
 function isPeakTime(time: string): boolean {
   return PEAK_HOURS.has((new Date(time).getUTCHours() + 8) % 24)
 }
@@ -581,6 +593,18 @@ const periodPingStats = computed(() => {
     return { task, peak: buildPeriod(true), offPeak: buildPeriod(false) }
   })
 })
+
+const advancedPingStats = computed(() => selectedTasks.value.map((task) => {
+  const latency = remoteData.value.filter(record => record.task_id === task.id && record.value >= 0).map(record => record.value)
+  const loss = remoteLossData.value.filter(record => record.task_id === task.id && Number.isFinite(record.value)).map(record => record.value * 100)
+  return {
+    task,
+    latencyP95: percentile(latency, 0.95),
+    latencyP99: percentile(latency, 0.99),
+    lossP95: percentile(loss, 0.95),
+    lossP99: percentile(loss, 0.99),
+  }
+}))
 
 // 切换任务选中状态
 function toggleTask(taskId: number) {
@@ -1017,24 +1041,81 @@ onBeforeUnmount(() => {
           <table class="w-full min-w-[620px] text-xs">
             <thead class="border-b border-border/60 text-muted-foreground">
               <tr>
-                <th class="px-3 py-2 text-left font-medium">任务</th>
-                <th class="px-3 py-2 text-right font-medium">高峰延迟</th>
-                <th class="px-3 py-2 text-right font-medium">高峰丢包</th>
-                <th class="px-3 py-2 text-right font-medium">非高峰延迟</th>
-                <th class="px-3 py-2 text-right font-medium">非高峰丢包</th>
+                <th class="px-3 py-2 text-left font-medium">
+                  任务
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  高峰延迟
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  高峰丢包
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  非高峰延迟
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  非高峰丢包
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in periodPingStats" :key="item.task.id" class="border-b border-border/40 last:border-0">
-                <td class="px-3 py-2 font-medium">{{ item.task.name }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ item.peak.latency === null ? '-' : `${Math.round(item.peak.latency)} ms` }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ item.peak.loss === null ? '-' : `${item.peak.loss.toFixed(2)}%` }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ item.offPeak.latency === null ? '-' : `${Math.round(item.offPeak.latency)} ms` }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ item.offPeak.loss === null ? '-' : `${item.offPeak.loss.toFixed(2)}%` }}</td>
+                <td class="px-3 py-2 font-medium">
+                  {{ item.task.name }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.peak.latency === null ? '-' : `${Math.round(item.peak.latency)} ms` }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.peak.loss === null ? '-' : `${item.peak.loss.toFixed(2)}%` }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.offPeak.latency === null ? '-' : `${Math.round(item.offPeak.latency)} ms` }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.offPeak.loss === null ? '-' : `${item.offPeak.loss.toFixed(2)}%` }}
+                </td>
               </tr>
             </tbody>
           </table>
-          <div class="border-t border-border/40 px-3 py-1.5 text-[10px] text-muted-foreground">高峰：北京时间 20:00-24:00；统计范围随上方时间筛选变化。</div>
+          <div class="border-t border-border/40 px-3 py-1.5 text-[10px] text-muted-foreground">
+            高峰：北京时间 20:00-24:00；统计范围随上方时间筛选变化。
+          </div>
+        </div>
+
+        <div v-if="appStore.pingAdvancedStatsEnabled && advancedPingStats.length" class="overflow-x-auto rounded-md border border-border/60 bg-background/50">
+          <table class="w-full min-w-[580px] text-xs">
+            <thead class="border-b border-border/60 text-muted-foreground">
+              <tr>
+                <th class="px-3 py-2 text-left font-medium">
+                  任务
+                </th><th class="px-3 py-2 text-right font-medium">
+                  延迟 P95
+                </th><th class="px-3 py-2 text-right font-medium">
+                  延迟 P99
+                </th><th class="px-3 py-2 text-right font-medium">
+                  丢包 P95
+                </th><th class="px-3 py-2 text-right font-medium">
+                  丢包 P99
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in advancedPingStats" :key="item.task.id" class="border-b border-border/40 last:border-0">
+                <td class="px-3 py-2 font-medium">
+                  {{ item.task.name }}
+                </td><td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.latencyP95 === null ? '-' : `${Math.round(item.latencyP95)} ms` }}
+                </td><td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.latencyP99 === null ? '-' : `${Math.round(item.latencyP99)} ms` }}
+                </td><td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.lossP95 === null ? '-' : `${item.lossP95.toFixed(2)}%` }}
+                </td><td class="px-3 py-2 text-right tabular-nums">
+                  {{ item.lossP99 === null ? '-' : `${item.lossP99.toFixed(2)}%` }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- 平滑峰值开关 -->

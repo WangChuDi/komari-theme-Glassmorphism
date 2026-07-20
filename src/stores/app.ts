@@ -1152,6 +1152,8 @@ const useAppStore = defineStore('app', () => {
 
   const homePingMultiHideEmpty = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'homePingMultiHideEmpty', true))
 
+  const pingAdvancedStatsEnabled = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'pingAdvancedStatsEnabled', true))
+
   const defaultHomePingNetworkMode = computed<HomePingNetworkMode>(() => {
     return normalizePingNetworkMode(themeSettings.value.homePingDefaultNetwork, 'auto')
   })
@@ -1419,6 +1421,7 @@ const useAppStore = defineStore('app', () => {
     homePingDisplayMode,
     homePingMultiNetworkFamilies,
     homePingMultiHideEmpty,
+    pingAdvancedStatsEnabled,
     defaultHomePingNetworkMode,
     homePingNetworkMode,
     homePingTaskSelections,

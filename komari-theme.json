@@ -57,6 +57,7 @@
       { "key": "homePingNetworkControlsEnabled", "name": "首页延迟线路选择", "type": "switch", "default": true, "help": "在首页显示延迟线路控制。多线路模式下提供各运营商具体任务下拉；单线路模式下显示自动、全部、电信、联通、移动、教育网切换。" },
       { "key": "homePingDefaultNetwork", "name": "默认单线路", "type": "select", "default": "自动", "options": "自动,全部,电信,联通,移动,教育网", "help": "仅单线路模式使用。自动会优先识别 Ping 任务名或标签中的电信/联通/移动/教育网关键词；全部保持旧版全任务平均。" },
       { "key": "homePingPreferredTasks", "name": "默认线路任务关键词", "type": "richtext", "default": "", "help": "可选。每行写一个运营商默认任务，例如：电信=广东电信；联通=北京联通；移动=上海移动；教育网=清华教育网。首页用户手动选择会覆盖此默认。" },
+      { "key": "pingAdvancedStatsEnabled", "name": "显示 Ping P95/P99 统计", "type": "switch", "default": true, "help": "在节点详情的 Ping 面板显示当前时间范围内每个任务的延迟和丢包 P95/P99；关闭可减少统计表内容。" },
       { "key": "homeHighLoadThreshold", "name": "高负载阈值", "type": "number", "default": 80, "help": "CPU、内存或硬盘占用达到该百分比时归为高负载节点（1-100）" },
       { "key": "homeTrafficWarningThreshold", "name": "流量预警阈值", "type": "number", "default": 80, "help": "节点流量配额使用率达到该百分比时归为流量预警（1-100）" },
       { "key": "homeExpiringDays", "name": "即将到期天数", "type": "number", "default": 30, "help": "节点剩余天数小于等于该值时归为即将到期（1-3650）" },
