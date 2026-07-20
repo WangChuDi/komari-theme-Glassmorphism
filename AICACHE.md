@@ -12,10 +12,10 @@
 
 ## 当前任务
 
-- 状态：done，`V3.2.0-mod V8` 已发布部署；7 日质量和多网延迟悬浮详情已使用 portal 修复
-- 目标：将共享 `DataTooltip` 改为 portal 浮层，按内容展开并限制在视口内；版本升级为 `V3.2.0-mod V8`。
+- 状态：in-progress，将 VPS 详情 Ping 丢包图改为延迟图中的红色背景时间带
+- 目标：选中任务发生丢包时标红整个图表高度，连续采样合并区间，tooltip 同时显示丢包率，并移除独立丢包折线图。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
-- 范围：首页级批量 Ping 质量 composable、节点卡片质量矩阵、共享统计类型、发布与部署。
+- 范围：`PingChart.vue`、共享 ECharts 注册、主题版本、发布与部署。
 - 不做：不修改 Komari 后端；不改变公开首页/详情页访问权限；不移除完整 Ping 弹窗里的多任务查看能力。
 
 ## 执行日志
@@ -40,6 +40,7 @@
 - `V3.2.0-mod V7` 发布与部署：代码提交 `54ffb07` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V7`，资产 SHA-256 `2E5583BE7C7E63962B394897AAF81CA0FF126CF4DCC5D0F166FC25D4AA638012`。已部署到 RackNerd，旧主题备份为 `/var/lib/komari/backups/theme-version-format-20260720-54ffb07`，服务 active。
 - `DataTooltip` 从卡片内部绝对定位改为 reka-ui `TooltipPortal`，并在应用 Provider 中统一提供 tooltip 上下文；气泡按内容展开、限制在视口内，不再受柱条/网格宽度或卡片 overflow 裁剪。修复覆盖 7 日质量、多网延迟历史柱以及其他共享 DataTooltip 用例，版本升为 `V3.2.0-mod V8`。
 - `V3.2.0-mod V8` 发布与部署：代码提交 `e31dece` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V8`，资产 SHA-256 `9679B69BFD40E424F658360C8DB6DF171BB6529BC1093A01FE161FC3045B51C0`。已部署到 RackNerd，旧 mod V7 主题备份为 `/var/lib/komari/backups/theme-tooltip-portal-20260720-e31dece`，服务 active。
+- VPS 详情页移除独立丢包折线图；选中任务在某采样点存在丢包时，延迟图以红色全高背景带标记该时间，连续丢包点合并为区间。悬浮详情逐线路显示该采样点丢包率，十字光标时间保持为易读格式；共享 ECharts 配置补注册 `MarkAreaComponent`，版本升为 `V3.2.0-mod V9`。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -67,6 +68,7 @@
 - 双版本格式验证：manifest JSON、格式正则、标签转换、`npm run lint`、`npm run type-check`、`npm run build` 全部通过；Release digest 与本地一致。部署后公网 manifest 返回版本 `V3.2.0-mod V7`，首页引用本次构建 `index-BiSNYNxp.js`。
 - Portal tooltip 验证：`npm run lint`、`npm run type-check` 通过；真实页面 7 日质量气泡宽约 247px、高约 57px，完整显示三行；多网延迟单点气泡宽约 105px、高约 42px，完整显示时间与线路延迟，均在视口范围内且不受节点卡裁剪。
 - `npm run build` 通过并生成 `komari-theme-Glassmorphism-build-e31dece.zip`，Release digest 与本地一致。部署后公网 manifest 返回 `V3.2.0-mod V8`，首页引用 `index-U5yWDZZJ.js`；主资源包含 DataTooltip/100vw 限制，reka chunk 包含 TooltipPortal。
+- 详情页丢包背景验证：`npm run lint`、`npm run type-check`、`npm run build` 均通过；真实 RackNerd 节点详情页只保留一张 Ping 图，红色区间覆盖完整延迟绘图区且曲线位于其上。悬浮 `18:38:00` 采样点可逐线路显示丢包率，并正确指出“上海联通 IPv4 · 丢包 100.0%”；十字光标标签显示 `18:38:00`，无原始 ISO 时间泄漏。
 
 ## 交接说明
 

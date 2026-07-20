@@ -488,6 +488,105 @@ const chartData = computed(() => {
   return data
 })
 
+interface ChartLossPoint {
+  byTask: Map<number, number>
+  max: number
+}
+
+function findNearestTimeIndex(timestamps: number[], target: number, toleranceMs: number): number | null {
+  let low = 0
+  let high = timestamps.length - 1
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const value = timestamps[middle]
+    if (value === undefined)
+      return null
+    if (value === target)
+      return middle
+    if (value < target)
+      low = middle + 1
+    else high = middle - 1
+  }
+
+  const candidates = [low - 1, low].filter(index => index >= 0 && index < timestamps.length)
+  let nearest: number | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (const index of candidates) {
+    const timestamp = timestamps[index]
+    if (timestamp === undefined)
+      continue
+    const distance = Math.abs(timestamp - target)
+    if (distance < nearestDistance) {
+      nearest = index
+      nearestDistance = distance
+    }
+  }
+  return nearestDistance <= toleranceMs ? nearest : null
+}
+
+const chartLossByIndex = computed<ChartLossPoint[]>(() => {
+  const data = chartData.value
+  const result: ChartLossPoint[] = []
+  for (let index = 0; index < data.length; index++)
+    result.push({ byTask: new Map<number, number>(), max: 0 })
+
+  if (!data.length || !remoteLossData.value.length || !selectedTaskIds.value.length)
+    return result
+
+  const selectedIds = new Set(selectedTaskIds.value)
+  const timestamps = data.map(item => dayjs(item.time as string).valueOf())
+  const exactIndexes = new Map(timestamps.map((timestamp, index) => [timestamp, index]))
+  for (const record of remoteLossData.value) {
+    if (!selectedIds.has(record.task_id) || !Number.isFinite(record.value))
+      continue
+    const timestamp = dayjs(record.time).valueOf()
+    const index = exactIndexes.get(timestamp) ?? findNearestTimeIndex(timestamps, timestamp, 6000)
+    if (index === null || index === undefined)
+      continue
+    const loss = Math.max(0, record.value * 100)
+    const point = result[index]
+    if (!point)
+      continue
+    point.byTask.set(record.task_id, loss)
+    point.max = Math.max(point.max, loss)
+  }
+  return result
+})
+
+const pingLossMarkAreas = computed(() => {
+  const data = chartData.value
+  const losses = chartLossByIndex.value
+  const ranges: Array<{ start: number, end: number, max: number }> = []
+  for (let index = 0; index < losses.length; index++) {
+    const loss = losses[index]
+    if (!loss || loss.max <= 0)
+      continue
+    const previous = ranges.at(-1)
+    if (previous && previous.end === index - 1) {
+      previous.end = index
+      previous.max = Math.max(previous.max, loss.max)
+    }
+    else {
+      ranges.push({ start: index, end: index, max: loss.max })
+    }
+  }
+
+  return ranges.map((range) => {
+    let startIndex = range.start
+    const endIndex = Math.min(data.length - 1, range.end + 1)
+    if (startIndex === endIndex && startIndex > 0)
+      startIndex -= 1
+    return [
+      {
+        name: `丢包 ${range.max.toFixed(1)}%`,
+        xAxis: data[startIndex]?.time,
+        itemStyle: { color: isDark.value ? 'rgba(251, 113, 133, 0.22)' : 'rgba(244, 63, 94, 0.18)' },
+      },
+      { xAxis: data[endIndex]?.time },
+    ]
+  })
+})
+
 // ==================== 工具函数 ====================
 
 function formatTime(time: string, showDate: boolean): string {
@@ -676,6 +775,14 @@ const pingChartOption = computed(() => {
       connectNulls: false,
       lineStyle: { width: 1.5, color, cap: 'round' as const, type: lineType },
       itemStyle: { color }, // 确保 symbol 颜色一致
+      z: 2,
+      markArea: index === 0 && pingLossMarkAreas.value.length
+        ? {
+            silent: true,
+            label: { show: false },
+            data: pingLossMarkAreas.value,
+          }
+        : undefined,
     }
   })
 
@@ -720,7 +827,9 @@ const pingChartOption = computed(() => {
             const task = tasks.value.find(t => t.name === item.seriesName)
             const color = task ? colorMap.get(task.id) || chartColors[0] : chartColors[0]
             const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;flex-shrink:0"></span>`
-            html += `<div style="display:flex;align-items:center">${colorDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.seriesName}</span><span style="margin-left:auto;font-weight:600;margin-left:16px;font-variant-numeric:tabular-nums">${Math.round(item.value)} ms</span></div>`
+            const loss = task ? chartLossByIndex.value[firstParam.dataIndex]?.byTask.get(task.id) : undefined
+            const lossText = loss === undefined ? '' : ` · 丢包 ${loss.toFixed(1)}%`
+            html += `<div style="display:flex;align-items:center">${colorDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.seriesName}</span><span style="margin-left:auto;font-weight:600;margin-left:16px;font-variant-numeric:tabular-nums">${Math.round(item.value)} ms${lossText}</span></div>`
           }
         }
         html += '</div>'
@@ -740,17 +849,23 @@ const pingChartOption = computed(() => {
     grid: chartMargin,
     xAxis: {
       type: 'category',
-      data: data.map(d => formatTime(d.time as string, showDateInAxis.value)),
+      data: data.map(d => d.time as string),
       axisLabel: {
         fontSize: 11,
         color: chartThemeColors.value.textSecondary,
         margin: 12,
+        formatter: (value: string) => formatTime(value, showDateInAxis.value),
       },
       axisLine: {
         show: true,
         lineStyle: { color: chartThemeColors.value.borderColor, width: 1 },
       },
       axisTick: { show: false },
+      axisPointer: {
+        label: {
+          formatter: (params: { value: string | number }) => formatTimeForTooltip(String(params.value), hours),
+        },
+      },
       boundaryGap: false,
     },
     yAxis: {
@@ -767,54 +882,6 @@ const pingChartOption = computed(() => {
         },
       },
     },
-    series,
-  }
-})
-
-const pingLossChartOption = computed(() => {
-  const taskList = selectedTasks.value
-  const hours = selectedHours.value
-  const series = taskList.map((task, index) => {
-    const color = getTaskColor(task.id)
-    const lineType = appStore.colorVisionFriendly
-      ? (ACCESSIBLE_LINE_TYPES[index % ACCESSIBLE_LINE_TYPES.length] ?? 'solid')
-      : 'solid'
-    return {
-      name: task.name,
-      type: 'line' as const,
-      step: 'middle' as const,
-      data: remoteLossData.value
-        .filter(record => record.task_id === task.id)
-        .map(record => [record.time, record.value * 100]),
-      showSymbol: false,
-      connectNulls: false,
-      lineStyle: { width: 1.5, color, cap: 'round' as const, type: lineType },
-      itemStyle: { color },
-    }
-  })
-
-  return {
-    animation: false,
-    tooltip: {
-      ...baseTooltipConfig.value,
-      formatter: (params: unknown) => {
-        const points = params as Array<{ seriesName: string, value: [string, number] }>
-        if (!points.length)
-          return ''
-        const time = points[0]?.value[0]
-        let html = `<div style="font-weight:600;margin-bottom:6px;color:${chartThemeColors.value.textSecondary}">${time ? formatTimeForTooltip(time, hours) : ''}</div>`
-        for (const point of points) {
-          const value = point.value?.[1]
-          if (Number.isFinite(value))
-            html += `<div>${point.seriesName}<span style="float:right;margin-left:18px;font-weight:600">${value.toFixed(1)}%</span></div>`
-        }
-        return html
-      },
-    },
-    legend: { type: 'scroll', bottom: 0, itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 11, color: chartThemeColors.value.textSecondary }, data: taskList.map(task => task.name) },
-    grid: chartMargin,
-    xAxis: { type: 'time', axisLabel: { fontSize: 11, color: chartThemeColors.value.textSecondary }, axisLine: { lineStyle: { color: chartThemeColors.value.borderColor } }, axisTick: { show: false } },
-    yAxis: { type: 'value', min: 0, max: 100, name: '丢包 (%)', nameTextStyle: { color: chartThemeColors.value.textSecondary }, axisLabel: { fontSize: 11, color: chartThemeColors.value.textSecondary, formatter: '{value}%' }, axisTick: { show: false }, splitLine: { lineStyle: { color: chartThemeColors.value.splitLineColor, type: 'dashed' as const } } },
     series,
   }
 })
@@ -1148,9 +1215,6 @@ onBeforeUnmount(() => {
         <!-- 图表 -->
         <div class="h-80 bg-background/50 p-4 rounded-md">
           <VChart :option="pingChartOption" autoresize />
-        </div>
-        <div v-if="remoteLossData.length" class="h-72 bg-background/50 p-4 rounded-md">
-          <VChart :option="pingLossChartOption" autoresize />
         </div>
       </template>
     </Spinner>
