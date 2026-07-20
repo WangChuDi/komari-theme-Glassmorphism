@@ -163,6 +163,7 @@ const activeTaskTooltipId = ref<number | null>(null)
 const smoothInfoTooltipOpen = ref(false)
 
 const chartMargin = { top: 30, right: 24, bottom: 52, left: 56 }
+const PEAK_HOURS = new Set([20, 21, 22, 23])
 let coarsePointerMediaQuery: MediaQueryList | null = null
 let fetchRecordsSequence = 0
 
@@ -544,6 +545,41 @@ const latestValues = computed(() => {
 
 const selectedTasks = computed(() => {
   return tasks.value.filter(t => selectedTaskIds.value.includes(t.id))
+})
+
+interface PeriodPingStats {
+  latency: number | null
+  loss: number | null
+  latencySamples: number
+  lossSamples: number
+}
+
+function averageMetric(records: PingRecord[]): number | null {
+  if (!records.length)
+    return null
+  return records.reduce((total, record) => total + record.value, 0) / records.length
+}
+
+function isPeakTime(time: string): boolean {
+  return PEAK_HOURS.has((new Date(time).getUTCHours() + 8) % 24)
+}
+
+const periodPingStats = computed(() => {
+  return selectedTasks.value.map((task) => {
+    const latency = remoteData.value.filter(record => record.task_id === task.id && record.value >= 0)
+    const loss = remoteLossData.value.filter(record => record.task_id === task.id && Number.isFinite(record.value))
+    const buildPeriod = (peak: boolean): PeriodPingStats => {
+      const latencyRecords = latency.filter(record => isPeakTime(record.time) === peak)
+      const lossRecords = loss.filter(record => isPeakTime(record.time) === peak)
+      return {
+        latency: averageMetric(latencyRecords),
+        loss: averageMetric(lossRecords) === null ? null : averageMetric(lossRecords)! * 100,
+        latencySamples: latencyRecords.length,
+        lossSamples: lossRecords.length,
+      }
+    }
+    return { task, peak: buildPeriod(true), offPeak: buildPeriod(false) }
+  })
 })
 
 // 切换任务选中状态
@@ -975,6 +1011,30 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
+        </div>
+
+        <div v-if="periodPingStats.length" class="overflow-x-auto rounded-md border border-border/60 bg-background/50">
+          <table class="w-full min-w-[620px] text-xs">
+            <thead class="border-b border-border/60 text-muted-foreground">
+              <tr>
+                <th class="px-3 py-2 text-left font-medium">任务</th>
+                <th class="px-3 py-2 text-right font-medium">高峰延迟</th>
+                <th class="px-3 py-2 text-right font-medium">高峰丢包</th>
+                <th class="px-3 py-2 text-right font-medium">非高峰延迟</th>
+                <th class="px-3 py-2 text-right font-medium">非高峰丢包</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in periodPingStats" :key="item.task.id" class="border-b border-border/40 last:border-0">
+                <td class="px-3 py-2 font-medium">{{ item.task.name }}</td>
+                <td class="px-3 py-2 text-right tabular-nums">{{ item.peak.latency === null ? '-' : `${Math.round(item.peak.latency)} ms` }}</td>
+                <td class="px-3 py-2 text-right tabular-nums">{{ item.peak.loss === null ? '-' : `${item.peak.loss.toFixed(2)}%` }}</td>
+                <td class="px-3 py-2 text-right tabular-nums">{{ item.offPeak.latency === null ? '-' : `${Math.round(item.offPeak.latency)} ms` }}</td>
+                <td class="px-3 py-2 text-right tabular-nums">{{ item.offPeak.loss === null ? '-' : `${item.offPeak.loss.toFixed(2)}%` }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="border-t border-border/40 px-3 py-1.5 text-[10px] text-muted-foreground">高峰：北京时间 20:00-24:00；统计范围随上方时间筛选变化。</div>
         </div>
 
         <!-- 平滑峰值开关 -->
