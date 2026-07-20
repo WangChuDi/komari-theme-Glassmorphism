@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：in-progress，将独立的首页 7 日三网质量表迁移到每台 VPS 对应的节点卡片中
+- 状态：done，v3.2.5-multiLatency 已发布并部署；7 日三网质量统计已迁移到每台 VPS 对应的节点卡片中
 - 目标：保留一次批量查询与三网聚合计算，在每台 VPS 卡片内紧凑显示 7 日高峰/非高峰延迟、丢包及可关闭的 P95/P99。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：首页级批量 Ping 质量 composable、节点卡片质量矩阵、共享统计类型、发布与部署。
@@ -31,6 +31,7 @@
 - 首页新增 7 日三网质量表：一次批量查询当前可见节点的 `ping.latency_ms` / `ping.loss`，按最多 168 个小时桶下采样；同运营商多个城市任务先等权聚合，再生成电信、联通、移动和三网等权行。每个高峰/非高峰单元格显示平均值，并在 `pingAdvancedStatsEnabled` 开启时显示小时桶 P95/P99。
 - `v3.2.4-multiLatency` 发布与部署：提交 `4edb38a`，Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.4-multiLatency`，资产 SHA-256 `4628A7C3BBE56BB84F17F11618E815023345C16BCCA9C61A869B08BDF02FED28`。已部署到 RackNerd Komari，旧主题备份为 `/var/lib/komari/backups/theme-home-quality-20260720-4edb38a`；服务 active。公开 `/api/rpc2` 使用 4 个 entity_ids、168 小时、168 点批量查询返回 420 条序列，范围完整覆盖 7 天。
 - 按用户反馈将独立的“7 日三网质量”全宽表移入每台 VPS 卡片：一次首页批量请求由 `useHomePingQuality` 负责，结果按 UUID 注入卡片；卡片矩阵显示电信/联通/移动/三网等权的高峰与非高峰平均延迟/丢包，P95/P99 由主题开关控制并收进悬浮详情。
+- `v3.2.5-multiLatency` 发布与部署：代码提交 `2816579` 已推送到 `origin/multi-network-ping`；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.5-multiLatency`，资产 `komari-theme-Glassmorphism-build-2816579.zip`，SHA-256 `AECD48CBDB01C5F8F878C422C680E4DFED39FEACB83BFF6FC7C1B68206C74E8E`。已部署至 RackNerd Komari，原主题备份在 `/var/lib/komari/backups/theme-card-quality-20260720-2816579`，目录归属 `komari:komari`、权限 755，`komari.service` active。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -50,6 +51,7 @@
 - 多线路直显补强后复验：`node -e` 解析 `komari-theme.json` 通过；`npm run lint` 通过；`npm run build` 通过，仍仅有既有 `@vueuse/core` PURE 注释警告和 `globe` 大 chunk 警告。
 - 正式发布构建使用临时 `GIT_CONFIG_COUNT` safe.directory 环境变量复跑 `npm run build`，生成 `komari-theme-Glassmorphism-build-7de31fd.zip`；包内 manifest 版本 `3.2.1`，URL 指向 fork。
 - VPS 卡片 7 日质量迁移验证：`npm run lint`、`npm run type-check`、`npm run build` 均通过；构建版本为 `3.2.5-multiLatency`。真实公开 API 下 4 台节点均渲染对应质量矩阵；1440x1000 四卡并排与 390x844 单列截图检查通过，移动端 document/viewport 宽度同为 380px，20 个矩阵行均未超出卡片。
+- 部署后公网验证：`/api/public` 返回当前主题 `Glassmorphism-multiLatency`；首页引用本次构建主入口 `index-FS1oAwKo.js`；`NodeCard-B3qVRUL-.js` 返回 200 且包含“7 日质量”。
 
 ## 交接说明
 
