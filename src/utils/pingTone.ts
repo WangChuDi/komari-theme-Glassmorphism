@@ -35,3 +35,15 @@ export function getPingSignalBackgroundClass(tone: PingSignalTone): string {
     return 'bg-signal-4 ping-signal-pattern-3'
   return 'bg-signal-5 ping-signal-pattern-4'
 }
+
+export function getPingSignalTextClass(tone: PingSignalTone): string {
+  if (tone === 1)
+    return 'text-signal-1'
+  if (tone === 2)
+    return 'text-signal-2'
+  if (tone === 3)
+    return 'text-signal-3'
+  if (tone === 4)
+    return 'text-signal-4'
+  return 'text-signal-5'
+}

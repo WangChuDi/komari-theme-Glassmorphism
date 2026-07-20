@@ -1,5 +1,5 @@
 import type { MaybeRefOrGetter } from 'vue'
-import type { PingNetworkFamily, PingTaskMeta, PingTaskSelection } from '@/utils/pingNetwork'
+import type { PingLatencyAggregation, PingLossAggregation, PingNetworkFamily, PingTaskMeta, PingTaskSelection } from '@/utils/pingNetwork'
 import type { PingMetricTaskStats } from '@/utils/rpc'
 import { useThrottleFn } from '@vueuse/core'
 import { computed, onScopeDispose, ref, shallowRef, toValue, watch } from 'vue'
@@ -7,7 +7,7 @@ import { PING_RECORD_MAX_COUNT } from '@/constants/load'
 import { abortPingRecords, loadPingRecordsWithTasks } from '@/services/history.service'
 import { loadPingMetricStats, queryMetrics } from '@/services/metrics.service'
 import { isPingMetric, normalizeMetricSeriesList, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
-import { createPingTaskMeta, getPingTaskSelectionCacheKey, normalizePingTaskId, resolvePingTaskSelection } from '@/utils/pingNetwork'
+import { aggregatePingLatencyValues, aggregatePingLossPercentages, createPingTaskMeta, getPingTaskSelectionCacheKey, normalizePingTaskId, resolvePingTaskSelection } from '@/utils/pingNetwork'
 
 export interface NodePingHistoryPoint {
   time: string
@@ -65,7 +65,7 @@ interface SharedPingRecordsEntry {
 }
 
 const HISTORY_BUCKET_COUNT = 20
-const CACHE_VERSION = 9
+const CACHE_VERSION = 10
 const CACHE_KEY_PREFIX = 'komari-theme-emerald:node-ping-stats'
 const FULL_LOSS_EPSILON = 1e-6
 const PING_RECORD_REFRESH_INTERVAL_MS = 60_000
@@ -458,7 +458,12 @@ function retainSharedPingRecordsEntry(hours: number, maxCount?: number, uuid?: s
   }
 }
 
-function buildPingHistory(records: PingRecord[], metricLossPoints?: MetricLossPoint[]): NodePingHistoryPoint[] {
+function buildPingHistory(
+  records: PingRecord[],
+  metricLossPoints: MetricLossPoint[] | undefined,
+  latencyAggregation: PingLatencyAggregation,
+  lossAggregation: PingLossAggregation,
+): NodePingHistoryPoint[] {
   const sortedRecords = records
     .map((record) => {
       const timestamp = new Date(record.time).getTime()
@@ -492,12 +497,22 @@ function buildPingHistory(records: PingRecord[], metricLossPoints?: MetricLossPo
   for (let index = 0; index < bucketCount; index++) {
     const startTime = firstTime + bucketSize * index
     const endTime = index === bucketCount - 1 ? lastTime + 1 : startTime + bucketSize
-    let totalCount = 0
-    let lostCount = 0
-    let latencySum = 0
-    let latencyCount = 0
-    let metricLossSum = 0
-    let metricLossCount = 0
+    const bucketByTask = new Map<number, {
+      latency: number[]
+      totalCount: number
+      lostCount: number
+      metricLossSum: number
+      metricLossCount: number
+    }>()
+
+    const getTaskBucket = (taskId: number) => {
+      const current = bucketByTask.get(taskId)
+      if (current)
+        return current
+      const created = { latency: [], totalCount: 0, lostCount: 0, metricLossSum: 0, metricLossCount: 0 }
+      bucketByTask.set(taskId, created)
+      return created
+    }
 
     while (recordIndex < sortedRecords.length) {
       const record = sortedRecords[recordIndex]
@@ -505,14 +520,12 @@ function buildPingHistory(records: PingRecord[], metricLossPoints?: MetricLossPo
         break
 
       if (record.timestamp >= startTime) {
-        totalCount += 1
-        if (record.value >= 0) {
-          latencySum += record.value
-          latencyCount += 1
-        }
-        else {
-          lostCount += 1
-        }
+        const taskBucket = getTaskBucket(record.task_id)
+        taskBucket.totalCount += 1
+        if (record.value >= 0)
+          taskBucket.latency.push(record.value)
+        else
+          taskBucket.lostCount += 1
       }
       recordIndex += 1
     }
@@ -523,18 +536,26 @@ function buildPingHistory(records: PingRecord[], metricLossPoints?: MetricLossPo
         break
 
       if (point.timestamp >= startTime) {
-        metricLossSum += point.value * point.count
-        metricLossCount += point.count
+        const taskBucket = getTaskBucket(point.task_id)
+        taskBucket.metricLossSum += point.value * point.count
+        taskBucket.metricLossCount += point.count
       }
       metricLossPointIndex += 1
     }
 
+    const taskLatencies = Array.from(bucketByTask.values(), task => aggregatePingLatencyValues(task.latency, 'average'))
+      .filter(isFiniteNumber)
+    const taskLosses = Array.from(bucketByTask.values(), (task) => {
+      if (metricLossPoints)
+        return task.metricLossCount ? task.metricLossSum / task.metricLossCount * 100 : null
+      return task.totalCount ? task.lostCount / task.totalCount * 100 : null
+    })
+      .filter(isFiniteNumber)
+
     history.push({
       time: new Date(startTime).toISOString(),
-      latency: latencyCount ? latencySum / latencyCount : null,
-      loss: metricLossPoints
-        ? (metricLossCount ? metricLossSum / metricLossCount * 100 : null)
-        : (totalCount ? lostCount / totalCount * 100 : null),
+      latency: aggregatePingLatencyValues(taskLatencies, latencyAggregation),
+      loss: aggregatePingLossPercentages(taskLosses, lossAggregation),
     })
   }
 
@@ -575,6 +596,8 @@ function buildStats(
   taskSelection?: PingTaskSelection | null,
   metricStats?: PingMetricTaskStats[],
   metricLossPoints?: MetricLossPoint[],
+  latencyAggregation: PingLatencyAggregation = 'average',
+  lossAggregation: PingLossAggregation = 'or',
 ): NodePingStatsState {
   const resolvedSelection = resolvePingTaskSelection(tasks, taskSelection)
   const selectedTaskIds = resolvedSelection.taskIds
@@ -590,7 +613,12 @@ function buildStats(
 
   const statsWithSamples = selectedMetricStats.filter(stat => stat.total > 0)
   if (statsWithSamples.length) {
-    const history = buildPingHistory(selectedRecords.filter(record => record.value >= 0), selectedMetricLossPoints)
+    const history = buildPingHistory(
+      selectedRecords.filter(record => record.value >= 0),
+      selectedMetricLossPoints,
+      latencyAggregation,
+      lossAggregation,
+    )
     const latencyValues = statsWithSamples
       .flatMap(stat => stat.valid > 0 && isFiniteNumber(stat.avg)
         ? [{ value: stat.avg, weight: stat.valid }]
@@ -600,15 +628,20 @@ function buildStats(
       .filter(isFiniteNumber)
     const lossValues = statsWithSamples
       .filter(stat => !stat.loss_approximate && isFiniteNumber(stat.loss))
-      .map(stat => ({ value: stat.loss, weight: stat.total }))
+      .map(stat => stat.loss)
     const volatilityValues = statsWithSamples
       .filter(stat => stat.valid > 0 && isFiniteNumber(stat.p99_p50_ratio))
       .map(stat => ({ value: stat.p99_p50_ratio!, weight: stat.valid }))
 
-    const avgLoss = weightedAverage(lossValues)
+    const avgLatency = latencyValues.length
+      ? latencyAggregation === 'average'
+        ? weightedAverage(latencyValues)
+        : aggregatePingLatencyValues(latencyValues.map(item => item.value), latencyAggregation) ?? 0
+      : aggregatePingLatencyValues(latestLatencyValues, latencyAggregation) ?? 0
+    const avgLoss = aggregatePingLossPercentages(lossValues, lossAggregation) ?? 0
 
     return withTaskSelection({
-      avgLatency: latencyValues.length ? weightedAverage(latencyValues) : average(latestLatencyValues),
+      avgLatency,
       avgLoss,
       avgVolatility: weightedAverage(volatilityValues),
       history,
@@ -622,7 +655,7 @@ function buildStats(
     return withTaskSelection(createEmptyStats(), resolvedSelection)
 
   const filteredRecords = selectedRecords.filter(record => includedTaskIds.has(record.task_id))
-  const history = buildPingHistory(filteredRecords)
+  const history = buildPingHistory(filteredRecords, undefined, latencyAggregation, lossAggregation)
   const taskRecords = new Map<number, PingRecord[]>()
 
   for (const record of filteredRecords) {
@@ -663,8 +696,14 @@ function buildStats(
     .map(point => point.loss)
     .filter(isFiniteNumber)
 
-  const avgLatency = latencyValues.length ? average(latencyValues) : average(historyLatencyValues)
-  const avgLoss = taskLossValues.length ? average(taskLossValues) : average(historyLossValues)
+  const avgLatency = aggregatePingLatencyValues(
+    latencyValues.length ? latencyValues : historyLatencyValues,
+    latencyAggregation,
+  ) ?? 0
+  const avgLoss = aggregatePingLossPercentages(
+    taskLossValues.length ? taskLossValues : historyLossValues,
+    lossAggregation,
+  ) ?? 0
   const avgVolatility = average(volatilityValues)
   const hasData = history.length > 0 || latencyValues.length > 0 || taskLossValues.length > 0
 
@@ -684,6 +723,8 @@ export function useNodePingStats(
     enabled?: MaybeRefOrGetter<boolean>
     maxCount?: MaybeRefOrGetter<number | undefined>
     taskSelection?: MaybeRefOrGetter<PingTaskSelection | null | undefined>
+    latencyAggregation?: MaybeRefOrGetter<PingLatencyAggregation>
+    lossAggregation?: MaybeRefOrGetter<PingLossAggregation>
   },
 ) {
   const loading = ref(false)
@@ -701,7 +742,13 @@ export function useNodePingStats(
     }
   })
   const selection = computed(() => toValue(options?.taskSelection) ?? null)
-  const selectionCacheKey = computed(() => getPingTaskSelectionCacheKey(selection.value))
+  const latencyAggregation = computed(() => toValue(options?.latencyAggregation) ?? 'average')
+  const lossAggregation = computed(() => toValue(options?.lossAggregation) ?? 'or')
+  const selectionCacheKey = computed(() => [
+    getPingTaskSelectionCacheKey(selection.value),
+    latencyAggregation.value,
+    lossAggregation.value,
+  ].join(':'))
 
   let activeCacheKey: string | null = null
   let releaseSharedRecords: (() => void) | null = null
@@ -741,7 +788,15 @@ export function useNodePingStats(
 
     const records = state.recordsByClient.get(nodeUuid) ?? []
     return records.length || state.metricStats?.length
-      ? buildStats(records, state.tasks, selection.value, state.metricStats, state.metricLossPoints)
+      ? buildStats(
+          records,
+          state.tasks,
+          selection.value,
+          state.metricStats,
+          state.metricLossPoints,
+          latencyAggregation.value,
+          lossAggregation.value,
+        )
       : createEmptyStats()
   })
 

@@ -17,6 +17,7 @@ import { useAppStore } from '@/stores/app'
 import { ACCESSIBLE_LINE_TYPES, getChartSeriesPalette } from '@/utils/chartPalette'
 import { isPingMetric, normalizeMetricSeriesList, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
 import { classifyPingTask, normalizePingTaskId, PING_NETWORK_LABELS } from '@/utils/pingNetwork'
+import { getLatencySignalTone, getPingSignalTextClass } from '@/utils/pingTone'
 import { cutPeakValues, interpolateNullsLinear } from '@/utils/recordHelper'
 import '@/utils/echarts' // 共享 ECharts 配置
 
@@ -705,6 +706,37 @@ const advancedPingStats = computed(() => selectedTasks.value.map((task) => {
   }
 }))
 
+const lossSourceStats = computed(() => selectedTasks.value
+  .map((task) => {
+    const records = remoteLossData.value.filter(record => record.task_id === task.id && Number.isFinite(record.value))
+    const lossRecords = records.filter(record => record.value > 0)
+    if (!lossRecords.length)
+      return null
+    const losses = records.map(record => Math.max(0, record.value * 100))
+    const latestLoss = lossRecords.at(-1)!
+    return {
+      task,
+      network: getTaskNetworkLabel(task) || '其他',
+      lossSamples: lossRecords.length,
+      totalSamples: records.length,
+      averageLoss: losses.reduce((sum, value) => sum + value, 0) / losses.length,
+      maxLoss: Math.max(...losses),
+      latestLossTime: latestLoss.time,
+    }
+  })
+  .filter((item): item is NonNullable<typeof item> => item !== null)
+  .sort((left, right) => right.lossSamples - left.lossSamples || right.maxLoss - left.maxLoss))
+
+function latencyTextClass(value: number | null): string {
+  return value === null ? 'text-muted-foreground' : getPingSignalTextClass(getLatencySignalTone(value))
+}
+
+function lossTextClass(value: number | null): string {
+  if (value === null)
+    return 'text-muted-foreground'
+  return getPingSignalTextClass(value > 1 ? 5 : 1)
+}
+
 // 切换任务选中状态
 function toggleTask(taskId: number) {
   if (selectedTaskIds.value.includes(taskId)) {
@@ -816,6 +848,18 @@ const pingChartOption = computed(() => {
         const time = rowData.time as string
         const timeStr = formatTimeForTooltip(time, hours)
         let html = `<div style="font-weight:600;margin-bottom:6px;color:${chartThemeColors.value.textSecondary}">${timeStr}</div>`
+        const lossSources = taskList
+          .map((task) => {
+            const loss = chartLossByIndex.value[firstParam.dataIndex]?.byTask.get(task.id)
+            return loss !== undefined && loss > 0 ? { task, loss } : null
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+        if (lossSources.length) {
+          const sourceText = lossSources
+            .map(item => `${item.task.name} ${item.loss.toFixed(1)}%`)
+            .join('、')
+          html += `<div style="max-width:360px;margin-bottom:7px;padding:5px 7px;border-radius:4px;background:rgba(244,63,94,.14);color:${isDark.value ? '#fda4af' : '#be123c'};white-space:normal;line-height:18px"><strong>丢包来源</strong> · ${sourceText}</div>`
+        }
         html += '<div style="display:flex;flex-direction:column;gap:4px">'
 
         // 按延迟值排序显示
@@ -1104,6 +1148,60 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <div v-if="lossSourceStats.length" class="overflow-x-auto rounded-md border border-rose-500/25 bg-rose-500/5">
+          <div class="flex items-center gap-2 border-b border-rose-500/20 px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-300">
+            <Icon icon="tabler:alert-triangle" :width="14" :height="14" />
+            <span>丢包来源</span>
+            <span class="font-normal text-muted-foreground">当前时间范围内发生过丢包的测试节点</span>
+          </div>
+          <table class="w-full min-w-[700px] text-xs">
+            <thead class="border-b border-border/60 text-muted-foreground">
+              <tr>
+                <th class="px-3 py-2 text-left font-medium">
+                  测试节点
+                </th>
+                <th class="px-3 py-2 text-left font-medium">
+                  网络
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  丢包采样
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  平均丢包
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  最大丢包
+                </th>
+                <th class="px-3 py-2 text-right font-medium">
+                  最近发生
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in lossSourceStats" :key="item.task.id" class="border-b border-border/40 last:border-0">
+                <td class="px-3 py-2 font-medium">
+                  {{ item.task.name }}
+                </td>
+                <td class="px-3 py-2 text-muted-foreground">
+                  {{ item.network }}
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-rose-600 dark:text-rose-300">
+                  {{ item.lossSamples }} / {{ item.totalSamples }}
+                </td>
+                <td class="px-3 py-2 text-right font-medium tabular-nums" :class="lossTextClass(item.averageLoss)">
+                  {{ item.averageLoss.toFixed(2) }}%
+                </td>
+                <td class="px-3 py-2 text-right font-medium tabular-nums" :class="lossTextClass(item.maxLoss)">
+                  {{ item.maxLoss.toFixed(2) }}%
+                </td>
+                <td class="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {{ formatTimeForTooltip(item.latestLossTime, selectedHours) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         <div v-if="periodPingStats.length" class="overflow-x-auto rounded-md border border-border/60 bg-background/50">
           <table class="w-full min-w-[620px] text-xs">
             <thead class="border-b border-border/60 text-muted-foreground">
@@ -1130,16 +1228,16 @@ onBeforeUnmount(() => {
                 <td class="px-3 py-2 font-medium">
                   {{ item.task.name }}
                 </td>
-                <td class="px-3 py-2 text-right tabular-nums">
+                <td class="px-3 py-2 text-right font-medium tabular-nums" :class="latencyTextClass(item.peak.latency)">
                   {{ item.peak.latency === null ? '-' : `${Math.round(item.peak.latency)} ms` }}
                 </td>
-                <td class="px-3 py-2 text-right tabular-nums">
+                <td class="px-3 py-2 text-right font-medium tabular-nums" :class="lossTextClass(item.peak.loss)">
                   {{ item.peak.loss === null ? '-' : `${item.peak.loss.toFixed(2)}%` }}
                 </td>
-                <td class="px-3 py-2 text-right tabular-nums">
+                <td class="px-3 py-2 text-right font-medium tabular-nums" :class="latencyTextClass(item.offPeak.latency)">
                   {{ item.offPeak.latency === null ? '-' : `${Math.round(item.offPeak.latency)} ms` }}
                 </td>
-                <td class="px-3 py-2 text-right tabular-nums">
+                <td class="px-3 py-2 text-right font-medium tabular-nums" :class="lossTextClass(item.offPeak.loss)">
                   {{ item.offPeak.loss === null ? '-' : `${item.offPeak.loss.toFixed(2)}%` }}
                 </td>
               </tr>
@@ -1171,13 +1269,13 @@ onBeforeUnmount(() => {
               <tr v-for="item in advancedPingStats" :key="item.task.id" class="border-b border-border/40 last:border-0">
                 <td class="px-3 py-2 font-medium">
                   {{ item.task.name }}
-                </td><td class="px-3 py-2 text-right tabular-nums">
+                </td><td class="px-3 py-2 text-right font-medium tabular-nums" :class="latencyTextClass(item.latencyP95)">
                   {{ item.latencyP95 === null ? '-' : `${Math.round(item.latencyP95)} ms` }}
-                </td><td class="px-3 py-2 text-right tabular-nums">
+                </td><td class="px-3 py-2 text-right font-medium tabular-nums" :class="latencyTextClass(item.latencyP99)">
                   {{ item.latencyP99 === null ? '-' : `${Math.round(item.latencyP99)} ms` }}
-                </td><td class="px-3 py-2 text-right tabular-nums">
+                </td><td class="px-3 py-2 text-right font-medium tabular-nums" :class="lossTextClass(item.lossP95)">
                   {{ item.lossP95 === null ? '-' : `${item.lossP95.toFixed(2)}%` }}
-                </td><td class="px-3 py-2 text-right tabular-nums">
+                </td><td class="px-3 py-2 text-right font-medium tabular-nums" :class="lossTextClass(item.lossP99)">
                   {{ item.lossP99 === null ? '-' : `${item.lossP99.toFixed(2)}%` }}
                 </td>
               </tr>

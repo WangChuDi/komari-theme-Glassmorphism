@@ -70,13 +70,13 @@ export function useNodePingDisplay(
 
   const defaultHomePingTaskSelection = computed<PingTaskSelection>(() => {
     const mode = appStore.homePingNetworkMode
-    const selectedTaskId = isKnownPingNetworkFamily(mode)
-      ? Number(appStore.homePingTaskSelections[mode])
-      : Number.NaN
+    const selectedTask = isKnownPingNetworkFamily(mode) ? appStore.homePingTaskSelections[mode] : undefined
+    const selectedTaskId = Number(selectedTask)
 
     return {
       mode,
       taskId: Number.isFinite(selectedTaskId) ? selectedTaskId : undefined,
+      includeAllTasks: selectedTask === 'all',
       preferredKeywordsByFamily: appStore.homePingPreferredTaskKeywords,
     }
   })
@@ -88,7 +88,18 @@ export function useNodePingDisplay(
     hours: pingStatsHours,
     enabled: pingStatsEnabled,
     taskSelection: homePingTaskSelection,
+    latencyAggregation: () => appStore.homePingLatencyAggregation,
+    lossAggregation: () => appStore.homePingLossAggregation,
   })
+
+  const latencyAggregationLabel = computed(() => {
+    if (appStore.homePingLatencyAggregation === 'max')
+      return '最高'
+    if (appStore.homePingLatencyAggregation === 'min')
+      return '最低'
+    return '平均'
+  })
+  const lossAggregationLabel = computed(() => appStore.homePingLossAggregation.toUpperCase())
 
   const pingScopeLabel = computed(() => pingStats.stats.value.taskLabel)
 
@@ -164,7 +175,7 @@ export function useNodePingDisplay(
       return options.emptyPanelTooltipText?.latency ?? ''
     }
     const scope = pingScopeLabel.value ? `${pingScopeLabel.value} · ` : ''
-    return `${scope}平均延迟 ${Math.round(pingStats.avgLatency.value)} ms`
+    return `${scope}${latencyAggregationLabel.value}延迟 ${Math.round(pingStats.avgLatency.value)} ms`
   })
 
   const lossPanelTooltip = computed(() => {
@@ -178,7 +189,7 @@ export function useNodePingDisplay(
       ? `，平均波动 ${pingStats.avgVolatility.value.toFixed(2)}`
       : ''
     const scope = pingScopeLabel.value ? `${pingScopeLabel.value} · ` : ''
-    return `${scope}平均丢包 ${pingStats.avgLoss.value.toFixed(1)}%${volatility}`
+    return `${scope}${lossAggregationLabel.value} 丢包 ${pingStats.avgLoss.value.toFixed(1)}%${volatility}`
   })
 
   return {
@@ -203,10 +214,12 @@ export function useNodePingMultiDisplay(
 
   const networkDisplays = KNOWN_PING_NETWORK_FAMILIES.map((family) => {
     const taskSelection = computed<PingTaskSelection>(() => {
-      const selectedTaskId = Number(appStore.homePingTaskSelections[family])
+      const selectedTask = appStore.homePingTaskSelections[family]
+      const selectedTaskId = Number(selectedTask)
       return {
         mode: family,
         taskId: Number.isFinite(selectedTaskId) ? selectedTaskId : undefined,
+        includeAllTasks: selectedTask === 'all',
         preferredKeywordsByFamily: appStore.homePingPreferredTaskKeywords,
       }
     })
@@ -231,9 +244,19 @@ export function useNodePingMultiDisplay(
         const loading = display.pingStats.loading.value
         const latency = display.pingStats.avgLatency.value
         const loss = display.pingStats.avgLoss.value
-        const scope = taskLabel && taskLabel !== networkLabel ? `${networkLabel} · ${taskLabel}` : networkLabel
+        const scope = taskLabel
+          ? taskLabel === networkLabel || taskLabel.startsWith(`${networkLabel} ·`)
+            ? taskLabel
+            : `${networkLabel} · ${taskLabel}`
+          : networkLabel
+        const latencyLabel = appStore.homePingLatencyAggregation === 'max'
+          ? '最高延迟'
+          : appStore.homePingLatencyAggregation === 'min'
+            ? '最低延迟'
+            : '平均延迟'
+        const lossLabel = `${appStore.homePingLossAggregation.toUpperCase()} 丢包`
         const tooltip = hasData
-          ? `${scope}\n平均延迟 ${Math.round(latency)} ms\n平均丢包 ${loss.toFixed(1)}%`
+          ? `${scope}\n${latencyLabel} ${Math.round(latency)} ms\n${lossLabel} ${loss.toFixed(1)}%`
           : loading
             ? `${scope}\n加载中`
             : `${scope}\n无采样数据`

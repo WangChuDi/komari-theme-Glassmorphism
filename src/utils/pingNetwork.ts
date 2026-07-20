@@ -3,6 +3,8 @@ export const KNOWN_PING_NETWORK_FAMILIES = ['telecom', 'unicom', 'mobile', 'educ
 export type KnownPingNetworkFamily = typeof KNOWN_PING_NETWORK_FAMILIES[number]
 export type PingNetworkFamily = KnownPingNetworkFamily | 'other'
 export type PingNetworkMode = 'auto' | 'all' | KnownPingNetworkFamily
+export type PingLatencyAggregation = 'average' | 'max' | 'min'
+export type PingLossAggregation = 'or' | 'and'
 
 export interface PingTaskMeta {
   id: number
@@ -15,6 +17,7 @@ export interface PingTaskMeta {
 export interface PingTaskSelection {
   mode: PingNetworkMode
   taskId?: number
+  includeAllTasks?: boolean
   preferredKeywordsByFamily?: Partial<Record<KnownPingNetworkFamily, string[]>>
 }
 
@@ -55,6 +58,33 @@ const PING_NETWORK_MODE_ALIASES: Record<string, PingNetworkMode> = {
   cernet: 'education',
   教育: 'education',
   教育网: 'education',
+}
+
+const PING_LATENCY_AGGREGATION_ALIASES: Record<string, PingLatencyAggregation> = {
+  average: 'average',
+  avg: 'average',
+  mean: 'average',
+  均值: 'average',
+  平均: 'average',
+  max: 'max',
+  highest: 'max',
+  最高: 'max',
+  最大: 'max',
+  min: 'min',
+  lowest: 'min',
+  最低: 'min',
+  最小: 'min',
+}
+
+const PING_LOSS_AGGREGATION_ALIASES: Record<string, PingLossAggregation> = {
+  or: 'or',
+  any: 'or',
+  或: 'or',
+  任一: 'or',
+  and: 'and',
+  all: 'and',
+  与: 'and',
+  全部: 'and',
 }
 
 const NETWORK_KEYWORDS: Record<KnownPingNetworkFamily, string[]> = {
@@ -114,6 +144,41 @@ export function normalizePingNetworkMode(value: unknown, fallback: PingNetworkMo
     return fallback
 
   return PING_NETWORK_MODE_ALIASES[value.trim().toLowerCase()] ?? PING_NETWORK_MODE_ALIASES[value.trim()] ?? fallback
+}
+
+export function normalizePingLatencyAggregation(value: unknown, fallback: PingLatencyAggregation = 'average'): PingLatencyAggregation {
+  if (typeof value !== 'string')
+    return fallback
+  return PING_LATENCY_AGGREGATION_ALIASES[value.trim().toLowerCase()] ?? PING_LATENCY_AGGREGATION_ALIASES[value.trim()] ?? fallback
+}
+
+export function normalizePingLossAggregation(value: unknown, fallback: PingLossAggregation = 'or'): PingLossAggregation {
+  if (typeof value !== 'string')
+    return fallback
+  return PING_LOSS_AGGREGATION_ALIASES[value.trim().toLowerCase()] ?? PING_LOSS_AGGREGATION_ALIASES[value.trim()] ?? fallback
+}
+
+export function aggregatePingLatencyValues(values: number[], aggregation: PingLatencyAggregation): number | null {
+  const finiteValues = values.filter(Number.isFinite)
+  if (!finiteValues.length)
+    return null
+  if (aggregation === 'max')
+    return Math.max(...finiteValues)
+  if (aggregation === 'min')
+    return Math.min(...finiteValues)
+  return finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length
+}
+
+export function aggregatePingLossPercentages(values: number[], aggregation: PingLossAggregation): number | null {
+  const ratios = values
+    .filter(Number.isFinite)
+    .map(value => Math.min(1, Math.max(0, value / 100)))
+  if (!ratios.length)
+    return null
+  const combined = aggregation === 'and'
+    ? ratios.reduce((result, ratio) => result * ratio, 1)
+    : 1 - ratios.reduce((result, ratio) => result * (1 - ratio), 1)
+  return combined * 100
 }
 
 export function isKnownPingNetworkFamily(value: unknown): value is KnownPingNetworkFamily {
@@ -259,6 +324,7 @@ export function getPingTaskSelectionCacheKey(selection: PingTaskSelection | null
   return [
     selection.mode,
     selection.taskId ?? 'auto',
+    selection.includeAllTasks ? 'all-tasks' : 'preferred',
     preferenceKey,
   ].join(':')
 }
@@ -284,6 +350,14 @@ function resolveFamilySelection(
   const familyTasks = filterTasksByFamily(tasks, family)
   if (!familyTasks.length)
     return null
+
+  if (selection.includeAllTasks) {
+    return {
+      taskIds: new Set(familyTasks.map(task => task.id)),
+      label: `${PING_NETWORK_LABELS[family]} · 所有`,
+      family,
+    }
+  }
 
   const selectedTask = selection.taskId === undefined
     ? null

@@ -369,6 +369,8 @@ const {
     enabled: computed(() => activeHomeTool.value === 'nodes'),
     taskSelections: () => appStore.homePingTaskSelections,
     preferredKeywordsByFamily: () => appStore.homePingPreferredTaskKeywords,
+    latencyAggregation: () => appStore.homePingLatencyAggregation,
+    lossAggregation: () => appStore.homePingLossAggregation,
   },
 )
 
@@ -652,6 +654,9 @@ const nodeCardGridClass = computed(() => {
                       <option value="">
                         自动
                       </option>
+                      <option value="all">
+                        所有
+                      </option>
                       <option v-for="task in activePingTaskOptions" :key="task.value" :value="task.value">
                         {{ task.label }}
                       </option>
@@ -686,6 +691,9 @@ const nodeCardGridClass = computed(() => {
                       >
                         <option value="">
                           自动
+                        </option>
+                        <option value="all">
+                          所有
                         </option>
                         <option v-for="task in item.options" :key="task.value" :value="task.value">
                           {{ task.label }}

@@ -1,12 +1,12 @@
 import type { PermissionKey, VerifyLoginOptions } from '@/services/auth.service'
 import type { MeInfo, PublicSettings } from '@/utils/api'
 import type { ByteDecimalsConfig } from '@/utils/helper'
-import type { KnownPingNetworkFamily, PingNetworkMode } from '@/utils/pingNetwork'
+import type { KnownPingNetworkFamily, PingLatencyAggregation, PingLossAggregation, PingNetworkMode } from '@/utils/pingNetwork'
 import { useStorageAsync } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { getAuthSession, requirePermission, setAuthSessionFromLogin, verifyLogin } from '@/services/auth.service'
-import { isKnownPingNetworkFamily, KNOWN_PING_NETWORK_FAMILIES, normalizePingNetworkMode, parsePingTaskPreferenceText } from '@/utils/pingNetwork'
+import { isKnownPingNetworkFamily, KNOWN_PING_NETWORK_FAMILIES, normalizePingLatencyAggregation, normalizePingLossAggregation, normalizePingNetworkMode, parsePingTaskPreferenceText } from '@/utils/pingNetwork'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
 export type ManagedThemeMode = 'beijing' | 'light' | 'dark'
@@ -1152,6 +1152,10 @@ const useAppStore = defineStore('app', () => {
 
   const homePingMultiHideEmpty = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'homePingMultiHideEmpty', true))
 
+  const homePingLatencyAggregation = computed<PingLatencyAggregation>(() => normalizePingLatencyAggregation(themeSettings.value.homePingLatencyAggregation))
+
+  const homePingLossAggregation = computed<PingLossAggregation>(() => normalizePingLossAggregation(themeSettings.value.homePingLossAggregation))
+
   const pingAdvancedStatsEnabled = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'pingAdvancedStatsEnabled', true))
 
   const defaultHomePingNetworkMode = computed<HomePingNetworkMode>(() => {
@@ -1421,6 +1425,8 @@ const useAppStore = defineStore('app', () => {
     homePingDisplayMode,
     homePingMultiNetworkFamilies,
     homePingMultiHideEmpty,
+    homePingLatencyAggregation,
+    homePingLossAggregation,
     pingAdvancedStatsEnabled,
     defaultHomePingNetworkMode,
     homePingNetworkMode,

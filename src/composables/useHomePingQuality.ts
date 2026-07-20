@@ -7,12 +7,12 @@ import type {
   PingQualityRow,
 } from '@/types/pingQuality'
 import type { NormalizedMetricSeries } from '@/utils/metricSeries'
-import type { KnownPingNetworkFamily, PingTaskMeta } from '@/utils/pingNetwork'
+import type { KnownPingNetworkFamily, PingLatencyAggregation, PingLossAggregation, PingTaskMeta } from '@/utils/pingNetwork'
 import type { PingTaskInfo } from '@/utils/rpc'
 import { computed, readonly, shallowRef, toValue, watch } from 'vue'
 import { queryMetrics } from '@/services/metrics.service'
 import { normalizeMetricSeriesList, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId } from '@/utils/metricSeries'
-import { createPingTaskMeta, isKnownPingNetworkFamily, PING_NETWORK_LABELS, resolvePingTaskSelection } from '@/utils/pingNetwork'
+import { aggregatePingLatencyValues, aggregatePingLossPercentages, createPingTaskMeta, isKnownPingNetworkFamily, PING_NETWORK_LABELS, resolvePingTaskSelection } from '@/utils/pingNetwork'
 
 interface TaskSamples {
   peakLatency: number[]
@@ -25,6 +25,8 @@ interface UseHomePingQualityOptions {
   enabled?: MaybeRefOrGetter<boolean>
   taskSelections?: MaybeRefOrGetter<Partial<Record<KnownPingNetworkFamily, string>>>
   preferredKeywordsByFamily?: MaybeRefOrGetter<Partial<Record<KnownPingNetworkFamily, string[]>>>
+  latencyAggregation?: MaybeRefOrGetter<PingLatencyAggregation>
+  lossAggregation?: MaybeRefOrGetter<PingLossAggregation>
 }
 
 const EMPTY_METRIC: PingQualityMetricStats = { avg: null, p95: null, p99: null }
@@ -67,6 +69,33 @@ function averagePeriods(items: PingQualityPeriodStats[]): PingQualityPeriodStats
   }
 }
 
+function aggregateMetricStats(
+  items: PingQualityMetricStats[],
+  aggregate: (values: number[]) => number | null,
+): PingQualityMetricStats {
+  const aggregateKey = (key: keyof PingQualityMetricStats) => aggregate(
+    items.map(item => item[key]).filter((value): value is number => value !== null),
+  )
+  return { avg: aggregateKey('avg'), p95: aggregateKey('p95'), p99: aggregateKey('p99') }
+}
+
+function aggregateTaskPeriods(
+  items: PingQualityPeriodStats[],
+  latencyAggregation: PingLatencyAggregation,
+  lossAggregation: PingLossAggregation,
+): PingQualityPeriodStats {
+  return {
+    latency: aggregateMetricStats(
+      items.map(item => item.latency),
+      values => aggregatePingLatencyValues(values, latencyAggregation),
+    ),
+    loss: aggregateMetricStats(
+      items.map(item => item.loss),
+      values => aggregatePingLossPercentages(values, lossAggregation),
+    ),
+  }
+}
+
 function isBeijingPeak(time: string): boolean {
   const hour = (new Date(time).getUTCHours() + 8) % 24
   return hour >= 20
@@ -78,6 +107,8 @@ function aggregateQualities(
   seriesList: NormalizedMetricSeries[],
   taskSelections: Partial<Record<KnownPingNetworkFamily, string>>,
   preferredKeywordsByFamily: Partial<Record<KnownPingNetworkFamily, string[]>>,
+  latencyAggregation: PingLatencyAggregation,
+  lossAggregation: PingLossAggregation,
 ): NodePingQualitySummary[] {
   const taskMetas = tasks
     .map(task => createPingTaskMeta(task, task.name))
@@ -91,10 +122,12 @@ function aggregateQualities(
   const selectedTaskIds = new Map<KnownPingNetworkFamily, Set<number>>()
   const selectedTaskLabels = new Map<KnownPingNetworkFamily, string>()
   for (const family of QUALITY_NETWORK_FAMILIES) {
-    const selectedTaskId = Number(taskSelections[family])
+    const selectedTask = taskSelections[family]
+    const selectedTaskId = Number(selectedTask)
     const resolved = resolvePingTaskSelection(taskMetas, {
       mode: family,
       taskId: Number.isFinite(selectedTaskId) ? selectedTaskId : undefined,
+      includeAllTasks: selectedTask === 'all',
       preferredKeywordsByFamily,
     })
     selectedTaskIds.set(family, resolved.taskIds ?? new Set<number>())
@@ -135,8 +168,8 @@ function aggregateQualities(
       carrierRows.push({
         key: family,
         label: selectedTaskLabels.get(family) ?? PING_NETWORK_LABELS[family],
-        peak: averagePeriods(periods.map(item => item.peak)),
-        offPeak: averagePeriods(periods.map(item => item.offPeak)),
+        peak: aggregateTaskPeriods(periods.map(item => item.peak), latencyAggregation, lossAggregation),
+        offPeak: aggregateTaskPeriods(periods.map(item => item.offPeak), latencyAggregation, lossAggregation),
       })
     }
     const rows: PingQualityRow[] = carrierRows.length
@@ -174,6 +207,8 @@ export function useHomePingQuality(
       metricSeries.value,
       options.taskSelections === undefined ? {} : toValue(options.taskSelections),
       options.preferredKeywordsByFamily === undefined ? {} : toValue(options.preferredKeywordsByFamily),
+      options.latencyAggregation === undefined ? 'average' : toValue(options.latencyAggregation),
+      options.lossAggregation === undefined ? 'or' : toValue(options.lossAggregation),
     )
   })
   const qualityByNode = computed<Record<string, NodePingQualitySummary>>(() => Object.fromEntries(
