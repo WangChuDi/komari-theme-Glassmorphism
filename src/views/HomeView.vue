@@ -94,6 +94,7 @@ const exchangeRates = ref(financeHelper.DEFAULT_EXCHANGE_RATES)
 const excludeFreeNodes = ref(true)
 const pingDialogNode = ref<NodeData | null>(null)
 const homePingTasks = ref<PingTaskInfo[]>([])
+const homePingTasksLoading = ref(true)
 
 const homeToolPermissionMap: Record<Exclude<HomeToolKey, 'nodes'>, PermissionKey> = {
   topology: 'nodeTopology',
@@ -236,6 +237,7 @@ onMounted(async () => {
     exchangeRates.value = exchangeResult.value.rates
   if (pingTasksResult.status === 'fulfilled')
     homePingTasks.value = pingTasksResult.value
+  homePingTasksLoading.value = false
 })
 
 watch(
@@ -356,7 +358,11 @@ const nodeList = computed(() => {
   }
   return getQuickControlNodes(filtered, activeQuickControl.value)
 })
-const { qualityByNode: homePingQualityByNode } = useHomePingQuality(
+const {
+  error: homePingQualityError,
+  loading: homePingQualityLoading,
+  qualityByNode: homePingQualityByNode,
+} = useHomePingQuality(
   () => nodeList.value,
   () => homePingTasks.value,
   {
@@ -774,6 +780,8 @@ const nodeCardGridClass = computed(() => {
                 <NodeCard
                   :node="node"
                   :quality="homePingQualityByNode[node.uuid]"
+                  :quality-error="homePingQualityError"
+                  :quality-loading="homePingTasksLoading || homePingQualityLoading"
                   :reduce-motion="reduceDenseNodeEffects"
                   @click="handleNodeClick(node)"
                   @ping-click="openPingDialog(node)"

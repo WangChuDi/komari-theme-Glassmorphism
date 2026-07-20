@@ -5,6 +5,7 @@ import { useNodePingStats } from '@/composables/useNodePingStats'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/helper'
 import { isKnownPingNetworkFamily, KNOWN_PING_NETWORK_FAMILIES, PING_NETWORK_LABELS } from '@/utils/pingNetwork'
+import { getLatencySignalTone, getLossSignalTone, getPingSignalBackgroundClass } from '@/utils/pingTone'
 
 export type NodePingMetric = 'latency' | 'loss'
 
@@ -41,27 +42,11 @@ export interface NodePingNetworkRow {
 const EMPTY_PING_BAR_COUNT = 20
 
 function getLatencyToneClass(latency: number): string {
-  if (latency <= 60)
-    return 'bg-signal-1'
-  if (latency <= 100)
-    return 'bg-signal-2'
-  if (latency <= 160)
-    return 'bg-signal-3 ping-signal-pattern-2'
-  if (latency <= 200)
-    return 'bg-signal-4 ping-signal-pattern-3'
-  return 'bg-signal-5 ping-signal-pattern-4'
+  return getPingSignalBackgroundClass(getLatencySignalTone(latency))
 }
 
 function getLossToneClass(loss: number): string {
-  if (loss <= 1)
-    return 'bg-signal-1'
-  if (loss <= 3)
-    return 'bg-signal-2'
-  if (loss <= 6)
-    return 'bg-signal-3 ping-signal-pattern-2'
-  if (loss <= 9)
-    return 'bg-signal-4 ping-signal-pattern-3'
-  return 'bg-signal-5 ping-signal-pattern-4'
+  return getPingSignalBackgroundClass(getLossSignalTone(loss))
 }
 
 export function useNodePingDisplay(

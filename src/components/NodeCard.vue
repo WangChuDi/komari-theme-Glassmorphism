@@ -12,14 +12,19 @@ import { useAppStore } from '@/stores/app'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig, formatDateTime, getStatus, getUptimeDays } from '@/utils/helper'
 import { getDiskPercentage, getMemoryPercentage, getTrafficUsed, getTrafficUsedPercentage, hasTrafficLimit } from '@/utils/nodeMetricsHelper'
 import { getOSImage, getOSName } from '@/utils/osImageHelper'
+import { getLatencySignalTone } from '@/utils/pingTone'
 import { getRegionCode, getRegionDisplayName } from '@/utils/regionHelper'
 import { formatCurrencyValue, formatPriceWithCycle, getDaysUntilExpired, getExpireStatus, getRemainingValue, parseTags } from '@/utils/tagHelper'
 
 const props = withDefaults(defineProps<{
   node: NodeData
   quality?: NodePingQualitySummary
+  qualityError?: string
+  qualityLoading?: boolean
   reduceMotion?: boolean
 }>(), {
+  qualityError: '',
+  qualityLoading: false,
   reduceMotion: false,
 })
 const emit = defineEmits<{
@@ -99,6 +104,14 @@ const {
 const latencyPanelLabel = computed(() => pingScopeLabel.value ? `${pingScopeLabel.value}延迟` : '延迟')
 const lossPanelLabel = computed(() => pingScopeLabel.value ? `${pingScopeLabel.value}丢包` : '丢包')
 const qualityRows = computed(() => props.quality?.rows ?? [])
+const showQualityPanel = computed(() => props.qualityLoading || Boolean(props.qualityError) || qualityRows.value.length > 0)
+const qualityToneTextClasses = {
+  1: 'text-signal-1',
+  2: 'text-signal-2',
+  3: 'text-signal-3',
+  4: 'text-signal-4',
+  5: 'text-signal-5',
+} as const
 
 function formatQualityValue(value: number | null, unit: 'ms' | '%'): string {
   if (value === null)
@@ -111,8 +124,14 @@ function formatQualityValue(value: number | null, unit: 'ms' | '%'): string {
   return `${Number(value.toFixed(digits))}%`
 }
 
-function formatQualityCell(period: PingQualityPeriodStats): string {
-  return `${formatQualityValue(period.latency.avg, 'ms')} · ${formatQualityValue(period.loss.avg, '%')}`
+function qualityLatencyClass(value: number | null): string {
+  return value === null ? 'text-muted-foreground' : qualityToneTextClasses[getLatencySignalTone(value)]
+}
+
+function qualityLossClass(value: number | null): string {
+  if (value === null)
+    return 'text-muted-foreground'
+  return value > 1 ? 'text-signal-5' : 'text-signal-1'
 }
 
 function formatQualityStats(label: string, stats: PingQualityMetricStats, unit: 'ms' | '%'): string {
@@ -572,16 +591,23 @@ function hasRegion(region: string | null | undefined): boolean {
           </button>
         </div>
 
-        <div v-if="qualityRows.length" class="rounded-lg bg-slate-500/5 p-2">
+        <div v-if="showQualityPanel" class="rounded-lg bg-slate-500/5 p-2">
           <div class="grid grid-cols-[4rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 text-[10px] leading-none text-muted-foreground">
             <span class="inline-flex items-center gap-1 font-medium text-foreground/80">
               <Icon icon="tabler:chart-dots-3" width="11" height="11" class="shrink-0" />
               <span>7 日质量</span>
             </span>
-            <span class="text-center">高峰</span>
-            <span class="text-center">非高峰</span>
+            <template v-if="qualityRows.length">
+              <span class="text-center">高峰</span>
+              <span class="text-center">非高峰</span>
+            </template>
+            <span v-else-if="props.qualityLoading" class="col-span-2 inline-flex items-center justify-center gap-1">
+              <Icon icon="tabler:loader-2" width="11" height="11" class="animate-spin" />
+              <span>加载中</span>
+            </span>
+            <span v-else class="col-span-2 truncate text-center text-destructive" :title="props.qualityError">加载失败</span>
           </div>
-          <div class="mt-1 grid gap-0.5">
+          <div v-if="qualityRows.length" class="mt-1 grid gap-0.5">
             <div
               v-for="row in qualityRows"
               :key="row.key"
@@ -594,8 +620,10 @@ function hasRegion(region: string | null | undefined): boolean {
                 :content="qualityTooltip('高峰 20:00-24:00', row.peak)"
                 content-class="whitespace-pre-line text-left leading-snug"
               >
-                <span class="block truncate text-center tabular-nums" :class="row.key === 'overall' ? 'text-foreground' : ''">
-                  {{ formatQualityCell(row.peak) }}
+                <span class="flex min-w-0 items-center justify-center gap-1 truncate text-center tabular-nums">
+                  <span :class="qualityLatencyClass(row.peak.latency.avg)">{{ formatQualityValue(row.peak.latency.avg, 'ms') }}</span>
+                  <span class="text-muted-foreground/50">·</span>
+                  <span :class="qualityLossClass(row.peak.loss.avg)">{{ formatQualityValue(row.peak.loss.avg, '%') }}</span>
                 </span>
               </DataTooltip>
               <DataTooltip
@@ -603,8 +631,10 @@ function hasRegion(region: string | null | undefined): boolean {
                 :content="qualityTooltip('非高峰 00:00-20:00', row.offPeak)"
                 content-class="whitespace-pre-line text-left leading-snug"
               >
-                <span class="block truncate text-center tabular-nums" :class="row.key === 'overall' ? 'text-foreground' : ''">
-                  {{ formatQualityCell(row.offPeak) }}
+                <span class="flex min-w-0 items-center justify-center gap-1 truncate text-center tabular-nums">
+                  <span :class="qualityLatencyClass(row.offPeak.latency.avg)">{{ formatQualityValue(row.offPeak.latency.avg, 'ms') }}</span>
+                  <span class="text-muted-foreground/50">·</span>
+                  <span :class="qualityLossClass(row.offPeak.loss.avg)">{{ formatQualityValue(row.offPeak.loss.avg, '%') }}</span>
                 </span>
               </DataTooltip>
             </div>
