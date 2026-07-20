@@ -6,18 +6,25 @@ import type {
   PingQualityPeriodStats,
   PingQualityRow,
 } from '@/types/pingQuality'
-import type { KnownPingNetworkFamily } from '@/utils/pingNetwork'
+import type { NormalizedMetricSeries } from '@/utils/metricSeries'
+import type { KnownPingNetworkFamily, PingTaskMeta } from '@/utils/pingNetwork'
 import type { PingTaskInfo } from '@/utils/rpc'
 import { computed, readonly, shallowRef, toValue, watch } from 'vue'
 import { queryMetrics } from '@/services/metrics.service'
 import { normalizeMetricSeriesList, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId } from '@/utils/metricSeries'
-import { createPingTaskMeta, isKnownPingNetworkFamily, PING_NETWORK_LABELS } from '@/utils/pingNetwork'
+import { createPingTaskMeta, isKnownPingNetworkFamily, PING_NETWORK_LABELS, resolvePingTaskSelection } from '@/utils/pingNetwork'
 
 interface TaskSamples {
   peakLatency: number[]
   offPeakLatency: number[]
   peakLoss: number[]
   offPeakLoss: number[]
+}
+
+interface UseHomePingQualityOptions {
+  enabled?: MaybeRefOrGetter<boolean>
+  taskSelections?: MaybeRefOrGetter<Partial<Record<KnownPingNetworkFamily, string>>>
+  preferredKeywordsByFamily?: MaybeRefOrGetter<Partial<Record<KnownPingNetworkFamily, string[]>>>
 }
 
 const EMPTY_METRIC: PingQualityMetricStats = { avg: null, p95: null, p99: null }
@@ -65,16 +72,110 @@ function isBeijingPeak(time: string): boolean {
   return hour >= 20
 }
 
+function aggregateQualities(
+  nodes: NodeData[],
+  tasks: PingTaskInfo[],
+  seriesList: NormalizedMetricSeries[],
+  taskSelections: Partial<Record<KnownPingNetworkFamily, string>>,
+  preferredKeywordsByFamily: Partial<Record<KnownPingNetworkFamily, string[]>>,
+): NodePingQualitySummary[] {
+  const taskMetas = tasks
+    .map(task => createPingTaskMeta(task, task.name))
+    .filter((task): task is PingTaskMeta => Boolean(task))
+  const taskFamilies = new Map<number, KnownPingNetworkFamily>()
+  for (const task of taskMetas) {
+    if (isKnownPingNetworkFamily(task.family))
+      taskFamilies.set(task.id, task.family)
+  }
+
+  const selectedTaskIds = new Map<KnownPingNetworkFamily, Set<number>>()
+  const selectedTaskLabels = new Map<KnownPingNetworkFamily, string>()
+  for (const family of QUALITY_NETWORK_FAMILIES) {
+    const selectedTaskId = Number(taskSelections[family])
+    const resolved = resolvePingTaskSelection(taskMetas, {
+      mode: family,
+      taskId: Number.isFinite(selectedTaskId) ? selectedTaskId : undefined,
+      preferredKeywordsByFamily,
+    })
+    selectedTaskIds.set(family, resolved.taskIds ?? new Set<number>())
+    selectedTaskLabels.set(family, resolved.label || PING_NETWORK_LABELS[family])
+  }
+
+  const samples = new Map<string, TaskSamples>()
+  for (const series of seriesList) {
+    const taskId = Number(pingTaskId(series))
+    const family = taskFamilies.get(taskId)
+    if (!family)
+      continue
+    const key = `${series.entity_id}|${family}|${taskId}`
+    const entry = samples.get(key) ?? { peakLatency: [], offPeakLatency: [], peakLoss: [], offPeakLoss: [] }
+    for (const point of series.points) {
+      if (point.value === null || !Number.isFinite(point.value))
+        continue
+      const peak = isBeijingPeak(point.time)
+      if (series.metric_key === PING_LATENCY_METRIC)
+        (peak ? entry.peakLatency : entry.offPeakLatency).push(point.value)
+      else if (series.metric_key === PING_LOSS_METRIC)
+        (peak ? entry.peakLoss : entry.offPeakLoss).push(point.value * 100)
+    }
+    samples.set(key, entry)
+  }
+
+  return nodes.map((node) => {
+    const carrierRows: PingQualityRow[] = []
+    for (const family of QUALITY_NETWORK_FAMILIES) {
+      const taskEntries = Array.from(selectedTaskIds.get(family) ?? [], taskId => samples.get(`${node.uuid}|${family}|${taskId}`))
+        .filter((entry): entry is TaskSamples => Boolean(entry))
+      if (!taskEntries.length)
+        continue
+      const periods = taskEntries.map(entry => ({
+        peak: { latency: metricStats(entry.peakLatency), loss: metricStats(entry.peakLoss) },
+        offPeak: { latency: metricStats(entry.offPeakLatency), loss: metricStats(entry.offPeakLoss) },
+      }))
+      carrierRows.push({
+        key: family,
+        label: selectedTaskLabels.get(family) ?? PING_NETWORK_LABELS[family],
+        peak: averagePeriods(periods.map(item => item.peak)),
+        offPeak: averagePeriods(periods.map(item => item.offPeak)),
+      })
+    }
+    const rows: PingQualityRow[] = carrierRows.length
+      ? [
+          ...carrierRows,
+          {
+            key: 'overall',
+            label: '三网等权',
+            peak: averagePeriods(carrierRows.map(row => row.peak)),
+            offPeak: averagePeriods(carrierRows.map(row => row.offPeak)),
+          },
+        ]
+      : []
+    return { uuid: node.uuid, name: node.name, rows }
+  }).filter(item => item.rows.length)
+}
+
 export function useHomePingQuality(
   nodes: MaybeRefOrGetter<NodeData[]>,
   tasks: MaybeRefOrGetter<PingTaskInfo[]>,
-  options?: { enabled?: MaybeRefOrGetter<boolean> },
+  options: UseHomePingQualityOptions = {},
 ) {
   const loading = shallowRef(false)
   const error = shallowRef('')
-  const qualities = shallowRef<NodePingQualitySummary[]>([])
+  const metricSeries = shallowRef<NormalizedMetricSeries[]>([])
   let loadSequence = 0
 
+  const qualities = computed<NodePingQualitySummary[]>(() => {
+    const enabled = options.enabled === undefined || toValue(options.enabled)
+    if (!enabled || !metricSeries.value.length)
+      return []
+    return aggregateQualities(
+      toValue(nodes),
+      toValue(tasks),
+      metricSeries.value,
+      options.taskSelections === undefined ? {} : toValue(options.taskSelections),
+      options.preferredKeywordsByFamily === undefined ? {} : toValue(options.preferredKeywordsByFamily),
+    )
+  })
   const qualityByNode = computed<Record<string, NodePingQualitySummary>>(() => Object.fromEntries(
     qualities.value.map(quality => [quality.uuid, quality]),
   ))
@@ -87,7 +188,7 @@ export function useHomePingQuality(
     const enabled = options?.enabled === undefined || toValue(options.enabled)
 
     if (!enabled || !entityIds.length || !currentTasks.length) {
-      qualities.value = []
+      metricSeries.value = []
       loading.value = false
       error.value = ''
       return
@@ -108,69 +209,11 @@ export function useHomePingQuality(
       if (sequence !== loadSequence)
         return
 
-      const taskFamilies = new Map<number, KnownPingNetworkFamily>()
-      for (const task of currentTasks) {
-        const meta = createPingTaskMeta(task, task.name)
-        if (meta && isKnownPingNetworkFamily(meta.family))
-          taskFamilies.set(meta.id, meta.family)
-      }
-
-      const samples = new Map<string, TaskSamples>()
-      for (const series of normalizeMetricSeriesList(result.series)) {
-        const taskId = Number(pingTaskId(series))
-        const family = taskFamilies.get(taskId)
-        if (!family)
-          continue
-        const key = `${series.entity_id}|${family}|${taskId}`
-        const entry = samples.get(key) ?? { peakLatency: [], offPeakLatency: [], peakLoss: [], offPeakLoss: [] }
-        for (const point of series.points) {
-          if (point.value === null || !Number.isFinite(point.value))
-            continue
-          const peak = isBeijingPeak(point.time)
-          if (series.metric_key === PING_LATENCY_METRIC)
-            (peak ? entry.peakLatency : entry.offPeakLatency).push(point.value)
-          else if (series.metric_key === PING_LOSS_METRIC)
-            (peak ? entry.peakLoss : entry.offPeakLoss).push(point.value * 100)
-        }
-        samples.set(key, entry)
-      }
-
-      qualities.value = currentNodes.map((node) => {
-        const carrierRows: PingQualityRow[] = []
-        for (const family of QUALITY_NETWORK_FAMILIES) {
-          const taskEntries = [...samples.entries()]
-            .filter(([key]) => key.startsWith(`${node.uuid}|${family}|`))
-            .map(([, value]) => value)
-          if (!taskEntries.length)
-            continue
-          const periods = taskEntries.map(entry => ({
-            peak: { latency: metricStats(entry.peakLatency), loss: metricStats(entry.peakLoss) },
-            offPeak: { latency: metricStats(entry.offPeakLatency), loss: metricStats(entry.offPeakLoss) },
-          }))
-          carrierRows.push({
-            key: family,
-            label: PING_NETWORK_LABELS[family],
-            peak: averagePeriods(periods.map(item => item.peak)),
-            offPeak: averagePeriods(periods.map(item => item.offPeak)),
-          })
-        }
-        const rows: PingQualityRow[] = carrierRows.length
-          ? [
-              ...carrierRows,
-              {
-                key: 'overall',
-                label: '三网等权',
-                peak: averagePeriods(carrierRows.map(row => row.peak)),
-                offPeak: averagePeriods(carrierRows.map(row => row.offPeak)),
-              },
-            ]
-          : []
-        return { uuid: node.uuid, name: node.name, rows }
-      }).filter(item => item.rows.length)
+      metricSeries.value = normalizeMetricSeriesList(result.series)
     }
     catch (cause) {
       if (sequence === loadSequence) {
-        qualities.value = []
+        metricSeries.value = []
         error.value = cause instanceof Error ? cause.message : '7 日 Ping 统计加载失败'
       }
     }

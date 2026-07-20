@@ -359,7 +359,11 @@ const nodeList = computed(() => {
 const { qualityByNode: homePingQualityByNode } = useHomePingQuality(
   () => nodeList.value,
   () => homePingTasks.value,
-  { enabled: computed(() => activeHomeTool.value === 'nodes') },
+  {
+    enabled: computed(() => activeHomeTool.value === 'nodes'),
+    taskSelections: () => appStore.homePingTaskSelections,
+    preferredKeywordsByFamily: () => appStore.homePingPreferredTaskKeywords,
+  },
 )
 
 const isDenseNodeGrid = computed(() => appStore.nodeViewMode === 'card' && nodeList.value.length > denseNodeAppearThreshold)
