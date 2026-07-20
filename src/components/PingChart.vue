@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { LineSeriesOption } from 'echarts/charts'
 import type { MetricSeries, PingMetricTaskStats, PingRecord, PingTaskInfo } from '@/utils/rpc'
 import { Icon } from '@iconify/vue'
 import dayjs from 'dayjs'
@@ -162,11 +163,14 @@ const cutPeak = ref(false)
 const isTouchTooltipMode = ref(false)
 const activeTaskTooltipId = ref<number | null>(null)
 const smoothInfoTooltipOpen = ref(false)
+const highlightedPingTaskId = ref<number | null>(null)
+const pingChartContainerRef = ref<HTMLElement | null>(null)
 
 const chartMargin = { top: 30, right: 24, bottom: 52, left: 56 }
 const PEAK_HOURS = new Set([20, 21, 22, 23])
 let coarsePointerMediaQuery: MediaQueryList | null = null
 let fetchRecordsSequence = 0
+let pingChartHighlightClearTimer: ReturnType<typeof setTimeout> | null = null
 
 function syncTouchTooltipMode() {
   if (typeof window === 'undefined') {
@@ -554,21 +558,34 @@ const chartLossByIndex = computed<ChartLossPoint[]>(() => {
   return result
 })
 
-const pingLossMarkAreas = computed(() => {
+interface PingLossMarkAreaStart {
+  name: string
+  xAxis: string
+  itemStyle: { color: string }
+}
+
+interface PingLossMarkAreaEnd {
+  xAxis: string
+}
+
+type PingLossMarkArea = [PingLossMarkAreaStart, PingLossMarkAreaEnd]
+
+function buildPingLossMarkAreas(taskId: number | null, color: string): PingLossMarkArea[] {
   const data = chartData.value
   const losses = chartLossByIndex.value
   const ranges: Array<{ start: number, end: number, max: number }> = []
   for (let index = 0; index < losses.length; index++) {
     const loss = losses[index]
-    if (!loss || loss.max <= 0)
+    const lossValue = taskId === null ? loss?.max : loss?.byTask.get(taskId)
+    if (!loss || !lossValue || lossValue <= 0)
       continue
     const previous = ranges.at(-1)
     if (previous && previous.end === index - 1) {
       previous.end = index
-      previous.max = Math.max(previous.max, loss.max)
+      previous.max = Math.max(previous.max, lossValue)
     }
     else {
-      ranges.push({ start: index, end: index, max: loss.max })
+      ranges.push({ start: index, end: index, max: lossValue })
     }
   }
 
@@ -580,12 +597,29 @@ const pingLossMarkAreas = computed(() => {
     return [
       {
         name: `丢包 ${range.max.toFixed(1)}%`,
-        xAxis: data[startIndex]?.time,
-        itemStyle: { color: isDark.value ? 'rgba(251, 113, 133, 0.22)' : 'rgba(244, 63, 94, 0.18)' },
+        xAxis: String(data[startIndex]?.time ?? ''),
+        itemStyle: { color },
       },
-      { xAxis: data[endIndex]?.time },
+      { xAxis: String(data[endIndex]?.time ?? '') },
     ]
   })
+}
+
+const pingLossMarkAreas = computed(() => {
+  const color = highlightedPingTaskId.value === null
+    ? isDark.value ? 'rgba(251, 113, 133, 0.22)' : 'rgba(244, 63, 94, 0.18)'
+    : isDark.value ? 'rgba(251, 113, 133, 0.07)' : 'rgba(244, 63, 94, 0.06)'
+  return buildPingLossMarkAreas(null, color)
+})
+
+const highlightedPingLossMarkAreas = computed(() => {
+  const taskId = highlightedPingTaskId.value
+  if (taskId === null)
+    return []
+  return buildPingLossMarkAreas(
+    taskId,
+    isDark.value ? 'rgba(251, 113, 133, 0.44)' : 'rgba(244, 63, 94, 0.36)',
+  )
 })
 
 // ==================== 工具函数 ====================
@@ -755,6 +789,85 @@ function hideAllTasks() {
   selectedTaskIds.value = []
 }
 
+interface PingChartEventParams {
+  componentType?: string
+  seriesName?: string
+  seriesIndex?: number | number[]
+  batch?: PingChartEventParams[]
+}
+
+function getEventTaskId(params: unknown): number | null {
+  const event = params as PingChartEventParams
+  const events = event.batch?.length ? event.batch : [event]
+  for (const item of events) {
+    if (item.seriesName) {
+      const task = selectedTasks.value.find(candidate => candidate.name === item.seriesName)
+      if (task)
+        return task.id
+    }
+    const seriesIndexes = Array.isArray(item.seriesIndex) ? item.seriesIndex : [item.seriesIndex]
+    for (const seriesIndex of seriesIndexes) {
+      if (typeof seriesIndex !== 'number')
+        continue
+      const task = selectedTasks.value[seriesIndex]
+      if (task)
+        return task.id
+    }
+  }
+  return null
+}
+
+function clearPingChartHighlight() {
+  highlightedPingTaskId.value = null
+}
+
+function schedulePingChartHighlightClear() {
+  if (pingChartHighlightClearTimer)
+    clearTimeout(pingChartHighlightClearTimer)
+  pingChartHighlightClearTimer = setTimeout(() => {
+    pingChartHighlightClearTimer = null
+    clearPingChartHighlight()
+  }, 80)
+}
+
+function handlePingChartHighlight(params: unknown) {
+  const taskId = getEventTaskId(params)
+  if (taskId === null)
+    return
+  if (pingChartHighlightClearTimer) {
+    clearTimeout(pingChartHighlightClearTimer)
+    pingChartHighlightClearTimer = null
+  }
+  highlightedPingTaskId.value = taskId
+}
+
+function handlePingChartDownplay(params: unknown) {
+  const taskId = getEventTaskId(params)
+  if (taskId === null || taskId === highlightedPingTaskId.value)
+    schedulePingChartHighlightClear()
+}
+
+function handlePingChartMouseOver(params: unknown) {
+  const event = params as PingChartEventParams
+  if (event.componentType === 'series')
+    handlePingChartHighlight(params)
+}
+
+function handleWindowPointerMove(event: PointerEvent) {
+  if (highlightedPingTaskId.value === null)
+    return
+  const bounds = pingChartContainerRef.value?.getBoundingClientRect()
+  if (!bounds)
+    return
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)
+    schedulePingChartHighlightClear()
+}
+
+watch(selectedTaskIds, (taskIds) => {
+  if (highlightedPingTaskId.value !== null && !taskIds.includes(highlightedPingTaskId.value))
+    clearPingChartHighlight()
+})
+
 // ==================== 图表配置 ====================
 
 // 通用 Tooltip 配置
@@ -793,7 +906,7 @@ const pingChartOption = computed(() => {
   const hours = selectedHours.value
 
   // 构建 series，确保颜色与卡片一致
-  const series = taskList.map((task, index) => {
+  const lineSeries: LineSeriesOption[] = taskList.map((task, index) => {
     const color = getTaskColor(task.id)
     const lineType = appStore.colorVisionFriendly
       ? (ACCESSIBLE_LINE_TYPES[index % ACCESSIBLE_LINE_TYPES.length] ?? 'solid')
@@ -808,15 +921,37 @@ const pingChartOption = computed(() => {
       lineStyle: { width: 1.5, color, cap: 'round' as const, type: lineType },
       itemStyle: { color }, // 确保 symbol 颜色一致
       z: 2,
-      markArea: index === 0 && pingLossMarkAreas.value.length
-        ? {
-            silent: true,
-            label: { show: false },
-            data: pingLossMarkAreas.value,
-          }
-        : undefined,
     }
   })
+
+  const lossAreaSeries = (
+    name: string,
+    areas: PingLossMarkArea[],
+    z: number,
+  ): LineSeriesOption => ({
+    name,
+    type: 'line' as const,
+    data: data.map(() => null),
+    showSymbol: false,
+    silent: true,
+    tooltip: { show: false },
+    lineStyle: { opacity: 0 },
+    itemStyle: { opacity: 0 },
+    emphasis: { disabled: true },
+    z,
+    markArea: {
+      z,
+      silent: true,
+      label: { show: false },
+      data: areas,
+    },
+  })
+
+  const series: LineSeriesOption[] = [...lineSeries]
+  if (pingLossMarkAreas.value.length)
+    series.push(lossAreaSeries('__ping_loss_background__', pingLossMarkAreas.value, 0))
+  if (highlightedPingLossMarkAreas.value.length)
+    series.push(lossAreaSeries('__ping_loss_highlight__', highlightedPingLossMarkAreas.value, 20))
 
   // 颜色映射表（用于 Tooltip）
   const colorMap = new Map<number, string>()
@@ -953,6 +1088,7 @@ onMounted(() => {
   syncTouchTooltipMode()
   coarsePointerMediaQuery = window.matchMedia('(pointer: coarse)')
   coarsePointerMediaQuery.addEventListener('change', syncTouchTooltipMode)
+  window.addEventListener('pointermove', handleWindowPointerMove, { passive: true })
 
   const firstView = availableViews.value[0]
   if (firstView && !selectedView.value) {
@@ -963,6 +1099,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   coarsePointerMediaQuery?.removeEventListener('change', syncTouchTooltipMode)
+  window.removeEventListener('pointermove', handleWindowPointerMove)
+  if (pingChartHighlightClearTimer)
+    clearTimeout(pingChartHighlightClearTimer)
 })
 </script>
 
@@ -1311,8 +1450,14 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- 图表 -->
-        <div class="h-80 bg-background/50 p-4 rounded-md">
-          <VChart :option="pingChartOption" autoresize />
+        <div ref="pingChartContainerRef" class="h-80 bg-background/50 p-4 rounded-md">
+          <VChart
+            :option="pingChartOption"
+            autoresize
+            @highlight="handlePingChartHighlight"
+            @downplay="handlePingChartDownplay"
+            @mouseover="handlePingChartMouseOver"
+          />
         </div>
       </template>
     </Spinner>
