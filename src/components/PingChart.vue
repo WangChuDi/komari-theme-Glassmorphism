@@ -15,7 +15,7 @@ import { loadPingRecordsWithTasks } from '@/services/history.service'
 import { loadPingMetricStats, queryMetrics } from '@/services/metrics.service'
 import { useAppStore } from '@/stores/app'
 import { ACCESSIBLE_LINE_TYPES, getChartSeriesPalette } from '@/utils/chartPalette'
-import { isPingMetric, normalizeMetricSeriesList, PING_LATENCY_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
+import { isPingMetric, normalizeMetricSeriesList, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
 import { classifyPingTask, normalizePingTaskId, PING_NETWORK_LABELS } from '@/utils/pingNetwork'
 import { cutPeakValues, interpolateNullsLinear } from '@/utils/recordHelper'
 import '@/utils/echarts' // 共享 ECharts 配置
@@ -149,6 +149,7 @@ watch(availableViews, (views) => {
 
 // ==================== 数据状态 ====================
 const remoteData = shallowRef<PingRecord[]>([])
+const remoteLossData = shallowRef<PingRecord[]>([])
 const tasks = shallowRef<PingTaskInfo[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -219,9 +220,9 @@ function normalizeMetricTask(stat: PingMetricTaskStats): PingTaskInfo {
   }
 }
 
-function buildMetricRecords(seriesList: MetricSeries[]): PingRecord[] {
+function buildMetricRecords(seriesList: MetricSeries[], metricKey: string): PingRecord[] {
   const records: PingRecord[] = []
-  const normalizedSeriesList = normalizeMetricSeriesList(seriesList).filter(isPingMetric)
+  const normalizedSeriesList = normalizeMetricSeriesList(seriesList).filter(series => series.metric_key === metricKey)
 
   for (const series of normalizedSeriesList) {
     const taskId = normalizePingTaskId(pingTaskId(series))
@@ -244,7 +245,7 @@ function buildMetricRecords(seriesList: MetricSeries[]): PingRecord[] {
   return records.sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
 }
 
-async function loadMetricPingPayload(nodeUuid: string): Promise<{ records: PingRecord[], tasks: PingTaskInfo[] } | null> {
+async function loadMetricPingPayload(nodeUuid: string): Promise<{ records: PingRecord[], lossRecords: PingRecord[], tasks: PingTaskInfo[] } | null> {
   const range = appliedCustomRange.value
   const metricRangeParams = isCustomRange.value && range
     ? { start: range.start.toDate().toISOString(), end: range.end.toDate().toISOString() }
@@ -253,7 +254,7 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{ records: PingR
   const [statsResult, metricsResult] = await Promise.allSettled([
     loadPingMetricStats({ entity_id: nodeUuid, ...metricRangeParams, max_points: PING_RECORD_MAX_COUNT }),
     queryMetrics({
-      metric_keys: [PING_LATENCY_METRIC],
+      metric_keys: [PING_LATENCY_METRIC, PING_LOSS_METRIC],
       entity_id: nodeUuid,
       ...metricRangeParams,
       downsample: true,
@@ -267,7 +268,10 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{ records: PingR
     ? (statsResult.value.stats ?? []).filter(stat => stat.entity_id === nodeUuid)
     : []
   const metricRecords = metricsResult.status === 'fulfilled'
-    ? buildMetricRecords(metricsResult.value.series)
+    ? buildMetricRecords(metricsResult.value.series, PING_LATENCY_METRIC)
+    : []
+  const lossRecords = metricsResult.status === 'fulfilled'
+    ? buildMetricRecords(metricsResult.value.series, PING_LOSS_METRIC)
     : []
 
   const metricTaskIds = new Set(metricRecords.map(record => record.task_id))
@@ -302,6 +306,7 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{ records: PingR
 
   return {
     records: metricRecords,
+    lossRecords,
     tasks: [...taskMap.values()],
   }
 }
@@ -321,6 +326,7 @@ async function fetchRecords() {
 
   if (isCustomRange.value && !customRange.value) {
     remoteData.value = []
+    remoteLossData.value = []
     tasks.value = []
     error.value = customRangeError.value || '请选择有效的自定义时间范围'
     legacyCustomRangeFallback.value = false
@@ -354,6 +360,7 @@ async function fetchRecords() {
     records.sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
 
     remoteData.value = records
+    remoteLossData.value = metricPayload?.lossRecords ?? []
     tasks.value = result.tasks
 
     if (tasks.value.length > 0 && selectedTaskIds.value.length === 0) {
@@ -367,6 +374,7 @@ async function fetchRecords() {
     error.value = err instanceof Error ? err.message : '获取数据失败'
     legacyCustomRangeFallback.value = false
     remoteData.value = []
+    remoteLossData.value = []
     tasks.value = []
   }
   finally {
@@ -703,6 +711,54 @@ const pingChartOption = computed(() => {
   }
 })
 
+const pingLossChartOption = computed(() => {
+  const taskList = selectedTasks.value
+  const hours = selectedHours.value
+  const series = taskList.map((task, index) => {
+    const color = getTaskColor(task.id)
+    const lineType = appStore.colorVisionFriendly
+      ? (ACCESSIBLE_LINE_TYPES[index % ACCESSIBLE_LINE_TYPES.length] ?? 'solid')
+      : 'solid'
+    return {
+      name: task.name,
+      type: 'line' as const,
+      step: 'middle' as const,
+      data: remoteLossData.value
+        .filter(record => record.task_id === task.id)
+        .map(record => [record.time, record.value * 100]),
+      showSymbol: false,
+      connectNulls: false,
+      lineStyle: { width: 1.5, color, cap: 'round' as const, type: lineType },
+      itemStyle: { color },
+    }
+  })
+
+  return {
+    animation: false,
+    tooltip: {
+      ...baseTooltipConfig.value,
+      formatter: (params: unknown) => {
+        const points = params as Array<{ seriesName: string, value: [string, number] }>
+        if (!points.length)
+          return ''
+        const time = points[0]?.value[0]
+        let html = `<div style="font-weight:600;margin-bottom:6px;color:${chartThemeColors.value.textSecondary}">${time ? formatTimeForTooltip(time, hours) : ''}</div>`
+        for (const point of points) {
+          const value = point.value?.[1]
+          if (Number.isFinite(value))
+            html += `<div>${point.seriesName}<span style="float:right;margin-left:18px;font-weight:600">${value.toFixed(1)}%</span></div>`
+        }
+        return html
+      },
+    },
+    legend: { type: 'scroll', bottom: 0, itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 11, color: chartThemeColors.value.textSecondary }, data: taskList.map(task => task.name) },
+    grid: chartMargin,
+    xAxis: { type: 'time', axisLabel: { fontSize: 11, color: chartThemeColors.value.textSecondary }, axisLine: { lineStyle: { color: chartThemeColors.value.borderColor } }, axisTick: { show: false } },
+    yAxis: { type: 'value', min: 0, max: 100, name: '丢包 (%)', nameTextStyle: { color: chartThemeColors.value.textSecondary }, axisLabel: { fontSize: 11, color: chartThemeColors.value.textSecondary, formatter: '{value}%' }, axisTick: { show: false }, splitLine: { lineStyle: { color: chartThemeColors.value.splitLineColor, type: 'dashed' as const } } },
+    series,
+  }
+})
+
 // ==================== 生命周期 ====================
 
 watch(selectedView, () => {
@@ -714,6 +770,7 @@ watch(selectedView, () => {
 
 watch(() => props.uuid, () => {
   remoteData.value = []
+  remoteLossData.value = []
   tasks.value = []
   selectedTaskIds.value = []
   activeTaskTooltipId.value = null
@@ -950,6 +1007,9 @@ onBeforeUnmount(() => {
         <!-- 图表 -->
         <div class="h-80 bg-background/50 p-4 rounded-md">
           <VChart :option="pingChartOption" autoresize />
+        </div>
+        <div v-if="remoteLossData.length" class="h-72 bg-background/50 p-4 rounded-md">
+          <VChart :option="pingLossChartOption" autoresize />
         </div>
       </template>
     </Spinner>
