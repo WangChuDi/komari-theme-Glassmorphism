@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：in-progress，首页多任务聚合策略与详情页丢包来源/质量色阶
+- 状态：done，`V3.2.0-mod V10` 已发布部署，首页多任务聚合策略与详情页丢包来源/质量色阶已生效
 - 目标：首页运营商任务支持显式“所有”；延迟可配置均值/最高/最低，丢包可配置 OR/AND；详情页显示丢包来源并为统计表格着色。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：主题设置与 app store、首页 Ping 聚合 composable、7 日质量、`PingChart.vue`、主题版本、发布与部署。
@@ -43,6 +43,7 @@
 - VPS 详情页移除独立丢包折线图；选中任务在某采样点存在丢包时，延迟图以红色全高背景带标记该时间，连续丢包点合并为区间。悬浮详情逐线路显示该采样点丢包率，十字光标时间保持为易读格式；共享 ECharts 配置补注册 `MarkAreaComponent`，版本升为 `V3.2.0-mod V9`。
 - `V3.2.0-mod V9` 发布与部署：功能提交 `473cbe4` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V9`，资产 `komari-theme-Glassmorphism-build-473cbe4.zip`，SHA-256 `9F937D91A47FF6B6B5187DD00B1C659D38D770D7A7A54426CD9ED84DC0D5CE32`。已部署到 RackNerd，旧 mod V8 主题备份为 `/var/lib/komari/backups/theme-loss-bands-20260720-473cbe4`，服务 active。
 - V10 开发：每个运营商任务选择新增显式“所有”，并以 `includeAllTasks` 覆盖默认关键词；首页一小时历史和 7 日质量支持可配置的延迟均值/最高/最低及丢包 OR/AND。详情页新增丢包来源统计和悬浮来源摘要，高峰/非高峰与 P95/P99 表使用统一延迟色阶，丢包按 `≤1%` 绿色、`>1%` 红色。
+- `V3.2.0-mod V10` 发布与部署：功能提交 `c54bb53` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V10`，资产 `komari-theme-Glassmorphism-build-c54bb53.zip`，SHA-256 `D6C059A02C7C6E3738522B6FA06866986621569BB4A4F5B055DE4FF97D152C6E`。已部署到 RackNerd，旧 mod V9 主题备份为 `/var/lib/komari/backups/theme-ping-aggregation-20260720-c54bb53`，服务 active。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -73,6 +74,7 @@
 - 详情页丢包背景验证：`npm run lint`、`npm run type-check`、`npm run build` 均通过；真实 RackNerd 节点详情页只保留一张 Ping 图，红色区间覆盖完整延迟绘图区且曲线位于其上。悬浮 `18:38:00` 采样点可逐线路显示丢包率，并正确指出“上海联通 IPv4 · 丢包 100.0%”；十字光标标签显示 `18:38:00`，无原始 ISO 时间泄漏。
 - V9 发布/部署验证：GitHub Release digest 与本地 SHA-256 一致；服务器公开 manifest 和 `/api/public` 均返回 200，manifest 版本为 `V3.2.0-mod V9`；线上 `PingChart-D4lPfS6M.js` 返回 200，并包含 `markArea` 与丢包详情代码。主题目录归属 `komari:komari`、权限 755。
 - V10 开发验证：manifest JSON 为 `V3.2.0-mod V10`；`npm run lint`、`npm run type-check`、`npm run build` 通过。纯函数测试确认延迟 `[100,200,300]` 分别聚合为均值 200/最高 300/最低 100，丢包 `[50%,50%]` 的 OR 为 75%、AND 为 25%，显式“所有”可覆盖默认北京关键词并选择北京/广州两任务。真实 RackNerd 首页的电信/联通/移动下拉均显示“所有”，选择后 4 台卡片及 7 日质量同步显示 `电信 · 所有`；详情页识别 9 个丢包来源，来源表、统计色阶和图表悬浮来源均检查通过。
+- V10 发布/部署验证：GitHub Release digest 与本地 SHA-256 一致；服务器公开 manifest 与 `/api/public` 均返回 200，版本为 `V3.2.0-mod V10`。主题 manifest 包含两个新聚合设置；线上 `PingChart-Bj99FeP2.js` 包含丢包来源，`HomeView-B6E9zSWe.js` 包含“所有”选择；目录为 `komari:komari`、权限 755。
 
 ## 交接说明
 
