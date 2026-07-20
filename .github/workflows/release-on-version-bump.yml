@@ -45,7 +45,8 @@ jobs:
 
           const zeroSha = '0000000000000000000000000000000000000000'
           const beforeSha = process.env.BEFORE_SHA
-          const versionRe = /^\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?$/i
+          const semverRe = /^\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?$/i
+          const modifiedVersionRe = /^V\d+\.\d+\.\d+-mod V\d+$/
 
           function readJson(filePath) {
             return JSON.parse(readFileSync(filePath, 'utf8'))
@@ -59,7 +60,7 @@ jobs:
           const themeJson = readJson('komari-theme.json')
           const currentVersion = themeJson.version
 
-          if (typeof currentVersion !== 'string' || !versionRe.test(currentVersion)) {
+          if (typeof currentVersion !== 'string' || (!semverRe.test(currentVersion) && !modifiedVersionRe.test(currentVersion))) {
             console.error(`Invalid komari-theme.json version: ${currentVersion}`)
             process.exit(1)
           }
@@ -80,7 +81,10 @@ jobs:
           console.log(`current_version=${currentVersion}`)
           console.log(`previous_version=${previousVersion}`)
           console.log(`version_changed=${versionChanged}`)
-          console.log(`release_tag=v${currentVersion}`)
+          const releaseTag = modifiedVersionRe.test(currentVersion)
+            ? currentVersion.replaceAll(' ', '-')
+            : `v${currentVersion}`
+          console.log(`release_tag=${releaseTag}`)
           NODE
 
       - name: Check release tag state
