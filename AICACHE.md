@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：in-progress，将主题版本改为“上游版本 + 修改版号”双版本格式
+- 状态：done，主题版本已改为 `V3.2.0-mod V7` 并完成发布部署
 - 目标：以 `V3.2.0` 表示上游基线，以 `mod V7` 表示当前修改版，并让发布工作流生成合法 Git 标签。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：首页级批量 Ping 质量 composable、节点卡片质量矩阵、共享统计类型、发布与部署。
@@ -36,6 +36,8 @@
 - `v3.2.6-multiLatency` 发布与部署：代码提交 `4ce6e08` 已推送到 `origin/multi-network-ping`；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.6-multiLatency`，资产 SHA-256 `BAFEE220AE49CD5792FBDCF87D671A4D9B97B398206663F70BFDAF35C77CAFB0`。已部署到 RackNerd Komari，原 3.2.5 主题备份为 `/var/lib/komari/backups/theme-task-sync-20260720-4ce6e08`，服务 active。
 - VPS 卡片 7 日质量新增加载/失败状态：公开 Ping 任务列表未返回或 7 日批量序列正在查询时，每张节点卡立即显示“加载中”，不再整块消失。延迟颜色复用多网延迟的 `≤60/≤100/≤160/≤200/>200ms` 五档；7 日丢包 `≤1%` 绿色、`>1%` 红色，延迟与丢包分别着色。
 - `v3.2.7-multiLatency` 发布与部署：代码提交 `37c93ed` 已推送到 `origin/multi-network-ping`；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/v3.2.7-multiLatency`，资产 SHA-256 `56597C10F795D5767914C6617A67E9DC2E91A975A8833D352DD0B43C04F13B05`。已部署到 RackNerd Komari，原 3.2.6 主题备份为 `/var/lib/komari/backups/theme-quality-colors-20260720-37c93ed`，服务 active。
+- 版本体系改为上游基线 + 修改版号：manifest 使用 `V3.2.0-mod V7`；Release 标签因 Git 不允许空格使用 `V3.2.0-mod-V7`，标题保持带空格格式。发布工作流同时兼容旧 SemVer 和新双版本格式，并会安全转换标签。
+- `V3.2.0-mod V7` 发布与部署：代码提交 `54ffb07` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V7`，资产 SHA-256 `2E5583BE7C7E63962B394897AAF81CA0FF126CF4DCC5D0F166FC25D4AA638012`。已部署到 RackNerd，旧主题备份为 `/var/lib/komari/backups/theme-version-format-20260720-54ffb07`，服务 active。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -60,6 +62,7 @@
 - `npm run build` 通过并生成 `komari-theme-Glassmorphism-build-4ce6e08.zip`；远端 Release digest 与本地一致。部署后公网首页引用 `index-CMz_fix-.js`，`HomeView-BhtaB8fq.js` 返回 200 并包含任务选择联动代码，`/api/public` 仍返回当前主题标识。
 - 加载与颜色验证：`npm run lint`、`npm run type-check` 通过；真实页面在 4 台节点卡均观察到加载提示，查询完成后自动替换为统计。计算样式验证 `4.41%`/`1.77%` 丢包为 `text-signal-5` 红色，`0.92%`/`0.48%` 为 `text-signal-1` 绿色，延迟使用共享色阶。
 - `npm run build` 通过并生成 `komari-theme-Glassmorphism-build-37c93ed.zip`，Release digest 与本地一致。部署后公网首页引用 `index-C0Rx_Gf4.js`，`NodeCard-C5MlnPMB.js` 返回 200 且包含加载提示和红色色阶代码，`/api/public` 仍使用目标主题。
+- 双版本格式验证：manifest JSON、格式正则、标签转换、`npm run lint`、`npm run type-check`、`npm run build` 全部通过；Release digest 与本地一致。部署后公网 manifest 返回版本 `V3.2.0-mod V7`，首页引用本次构建 `index-BiSNYNxp.js`。
 
 ## 交接说明
 
