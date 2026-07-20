@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：in-progress，修复节点卡片内 7 日质量和多网延迟悬浮详情过窄/被裁剪
+- 状态：done，`V3.2.0-mod V8` 已发布部署；7 日质量和多网延迟悬浮详情已使用 portal 修复
 - 目标：将共享 `DataTooltip` 改为 portal 浮层，按内容展开并限制在视口内；版本升级为 `V3.2.0-mod V8`。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：首页级批量 Ping 质量 composable、节点卡片质量矩阵、共享统计类型、发布与部署。
@@ -39,6 +39,7 @@
 - 版本体系改为上游基线 + 修改版号：manifest 使用 `V3.2.0-mod V7`；Release 标签因 Git 不允许空格使用 `V3.2.0-mod-V7`，标题保持带空格格式。发布工作流同时兼容旧 SemVer 和新双版本格式，并会安全转换标签。
 - `V3.2.0-mod V7` 发布与部署：代码提交 `54ffb07` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V7`，资产 SHA-256 `2E5583BE7C7E63962B394897AAF81CA0FF126CF4DCC5D0F166FC25D4AA638012`。已部署到 RackNerd，旧主题备份为 `/var/lib/komari/backups/theme-version-format-20260720-54ffb07`，服务 active。
 - `DataTooltip` 从卡片内部绝对定位改为 reka-ui `TooltipPortal`，并在应用 Provider 中统一提供 tooltip 上下文；气泡按内容展开、限制在视口内，不再受柱条/网格宽度或卡片 overflow 裁剪。修复覆盖 7 日质量、多网延迟历史柱以及其他共享 DataTooltip 用例，版本升为 `V3.2.0-mod V8`。
+- `V3.2.0-mod V8` 发布与部署：代码提交 `e31dece` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V8`，资产 SHA-256 `9679B69BFD40E424F658360C8DB6DF171BB6529BC1093A01FE161FC3045B51C0`。已部署到 RackNerd，旧 mod V7 主题备份为 `/var/lib/komari/backups/theme-tooltip-portal-20260720-e31dece`，服务 active。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -65,6 +66,7 @@
 - `npm run build` 通过并生成 `komari-theme-Glassmorphism-build-37c93ed.zip`，Release digest 与本地一致。部署后公网首页引用 `index-C0Rx_Gf4.js`，`NodeCard-C5MlnPMB.js` 返回 200 且包含加载提示和红色色阶代码，`/api/public` 仍使用目标主题。
 - 双版本格式验证：manifest JSON、格式正则、标签转换、`npm run lint`、`npm run type-check`、`npm run build` 全部通过；Release digest 与本地一致。部署后公网 manifest 返回版本 `V3.2.0-mod V7`，首页引用本次构建 `index-BiSNYNxp.js`。
 - Portal tooltip 验证：`npm run lint`、`npm run type-check` 通过；真实页面 7 日质量气泡宽约 247px、高约 57px，完整显示三行；多网延迟单点气泡宽约 105px、高约 42px，完整显示时间与线路延迟，均在视口范围内且不受节点卡裁剪。
+- `npm run build` 通过并生成 `komari-theme-Glassmorphism-build-e31dece.zip`，Release digest 与本地一致。部署后公网 manifest 返回 `V3.2.0-mod V8`，首页引用 `index-U5yWDZZJ.js`；主资源包含 DataTooltip/100vw 限制，reka chunk 包含 TooltipPortal。
 
 ## 交接说明
 
