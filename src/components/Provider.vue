@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { provide, ref, watch } from 'vue'
 import { BackTop } from '@/components/ui/back-top'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/stores/app'
 import { buildGlassThemeTokens } from '@/utils/glassTheme'
 
@@ -56,6 +57,8 @@ watch(
 </script>
 
 <template>
-  <slot />
+  <TooltipProvider :delay-duration="100">
+    <slot />
+  </TooltipProvider>
   <BackTop :visibility-height="1" @scrolled="isScrolled = $event" />
 </template>
