@@ -56,6 +56,7 @@ defineOptions({ name: 'HomeView' })
 
 const AuditLogPanel = defineAsyncComponent(() => import('@/components/AuditLogPanel.vue'))
 const HealthSummaryPanel = defineAsyncComponent(() => import('@/components/HealthSummaryPanel.vue'))
+const HomePingQualityPanel = defineAsyncComponent(() => import('@/components/HomePingQualityPanel.vue'))
 const NodeCard = defineAsyncComponent(() => import('@/components/NodeCard.vue'))
 const NodeGeneralCards = defineAsyncComponent(() => import('@/components/NodeGeneralCards.vue'))
 const NodeList = defineAsyncComponent(() => import('@/components/NodeList.vue'))
@@ -738,6 +739,12 @@ const nodeCardGridClass = computed(() => {
               </div>
             </div>
           </div>
+          <HomePingQualityPanel
+            v-if="activeHomeTool === 'nodes' && homePingTasks.length"
+            :nodes="nodeList"
+            :tasks="homePingTasks"
+            :advanced="appStore.pingAdvancedStatsEnabled"
+          />
           <TabsContent v-for="g in groups" :key="g.name" :value="g.name" class="pointer-events-auto">
             <div v-if="activeHomeTool !== 'nodes'" class="mb-4 rounded-lg bg-background/50 px-3 py-2 text-sm text-muted-foreground">
               {{ activeToolTitle }} · 当前分组：{{ g.tab }}（{{ groupNodeList.length }} 台）
