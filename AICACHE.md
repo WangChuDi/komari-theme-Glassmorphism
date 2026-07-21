@@ -12,7 +12,7 @@
 
 ## 当前任务
 
-- 状态：in-progress，V12 功能与真实页面验证完成，待发布部署
+- 状态：done，`V3.2.0-mod V12` 已发布部署，图例可同步隐藏延迟与丢包
 - 目标：点击图表底部测试节点图例后，延迟曲线和该任务的丢包背景/前景区间使用同一可见状态。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：`PingChart.vue`、主题版本、发布与部署。
@@ -47,6 +47,7 @@
 - V11 开发：详情 Ping 图监听 ECharts 的任务 highlight/mouseover，按 `task_id` 单独生成高层级丢包覆盖系列；强调期间全局丢包背景降淡，对应任务区间提高透明度并置于前景。窗口级指针边界负责在离开图表后恢复，避免 ECharts option 重绘打断 downplay/mouseout。
 - `V3.2.0-mod V11` 发布与部署：功能提交 `074a6f3` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V11`，资产 `komari-theme-Glassmorphism-build-074a6f3.zip`，SHA-256 `2CEA0E043823A896E3029ED66547D627CC351556E08810A9CAF4F2477217F195`。已部署到 RackNerd，旧 mod V10 主题备份为 `/var/lib/komari/backups/theme-loss-hover-20260720-074a6f3`，服务 active。
 - V12 开发：详情 Ping 图新增按任务 ID 保存的 ECharts 图例可见状态；丢包背景、悬停前景和图表悬浮丢包来源均只消费当前图例可见任务。切换时间范围或 VPS 时重置图例状态，隐藏正在强调的任务时同步清理强调状态。
+- `V3.2.0-mod V12` 发布与部署：功能提交 `77e5ae4` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V12`，资产 `komari-theme-Glassmorphism-build-77e5ae4.zip`，SHA-256 `E4B3F02C79B89773CF5AD15CF80F6113600DD431BC1CD2577F8312E63082B0DC`。已部署到 RackNerd，旧 mod V11 主题备份为 `/var/lib/komari/backups/theme-legend-loss-20260721-77e5ae4`，服务 active。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -81,6 +82,7 @@
 - V11 开发验证：`npm run lint` 与 `npm run type-check` 通过。真实 RackNerd 详情页默认保持完整红色丢包背景；悬停广州电信图例后仅该任务的 7 段丢包区间显示为前景竖带，其他丢包背景降淡；鼠标移出图表后立即恢复完整背景。
 - V11 发布/部署验证：`npm run build` 通过；GitHub Release digest 与本地 SHA-256 一致。服务器公开 manifest 与 `/api/public` 均返回 200，版本为 `V3.2.0-mod V11`；线上 `PingChart-Bu0mDWou.js` 返回 200，并包含指针边界清理与 `__ping_loss_highlight__` 前景覆盖实现；主题目录为 `komari:komari`、权限 755。
 - V12 开发验证：`npm run lint`、`npm run type-check`、`npm run build` 均通过，构建仅有既有 VueUse PURE 注释和 globe 大 chunk 警告。真实 RackNerd 详情页只选择丢包约 58% 的“北京移动 IPv4”后，图例关闭时橙色延迟曲线和全部红色丢包背景同时消失；再次点击图例后两者同时恢复。
+- V12 发布/部署验证：GitHub Release 资产 digest 与本地 SHA-256 一致；服务器 manifest、`/api/public` 和 `PingChart-C3n0K9Eg.js` 均返回 200，manifest 版本为 `V3.2.0-mod V12`，公开配置仍激活 `Glassmorphism-multiLatency`。线上 PingChart 包含 `onLegendselectchanged` 与 `__ping_loss_highlight__`，主题目录为 `komari:komari`、权限 755。
 
 ## 交接说明
 
