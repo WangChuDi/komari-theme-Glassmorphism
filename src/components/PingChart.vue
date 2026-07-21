@@ -165,6 +165,7 @@ const activeTaskTooltipId = ref<number | null>(null)
 const smoothInfoTooltipOpen = ref(false)
 const highlightedPingTaskId = ref<number | null>(null)
 const pingChartContainerRef = ref<HTMLElement | null>(null)
+const legendTaskVisibility = shallowRef<Map<number, boolean>>(new Map())
 
 const chartMargin = { top: 30, right: 24, bottom: 52, left: 56 }
 const PEAK_HOURS = new Set([20, 21, 22, 23])
@@ -493,6 +494,10 @@ const chartData = computed(() => {
   return data
 })
 
+const chartVisibleTaskIds = computed(() => new Set(
+  selectedTaskIds.value.filter(taskId => legendTaskVisibility.value.get(taskId) !== false),
+))
+
 interface ChartLossPoint {
   byTask: Map<number, number>
   max: number
@@ -535,10 +540,10 @@ const chartLossByIndex = computed<ChartLossPoint[]>(() => {
   for (let index = 0; index < data.length; index++)
     result.push({ byTask: new Map<number, number>(), max: 0 })
 
-  if (!data.length || !remoteLossData.value.length || !selectedTaskIds.value.length)
+  if (!data.length || !remoteLossData.value.length || !chartVisibleTaskIds.value.size)
     return result
 
-  const selectedIds = new Set(selectedTaskIds.value)
+  const selectedIds = chartVisibleTaskIds.value
   const timestamps = data.map(item => dayjs(item.time as string).valueOf())
   const exactIndexes = new Map(timestamps.map((timestamp, index) => [timestamp, index]))
   for (const record of remoteLossData.value) {
@@ -796,6 +801,10 @@ interface PingChartEventParams {
   batch?: PingChartEventParams[]
 }
 
+interface PingChartLegendSelectionEvent {
+  selected?: Record<string, boolean>
+}
+
 function getEventTaskId(params: unknown): number | null {
   const event = params as PingChartEventParams
   const events = event.batch?.length ? event.batch : [event]
@@ -832,13 +841,27 @@ function schedulePingChartHighlightClear() {
 
 function handlePingChartHighlight(params: unknown) {
   const taskId = getEventTaskId(params)
-  if (taskId === null)
+  if (taskId === null || !chartVisibleTaskIds.value.has(taskId))
     return
   if (pingChartHighlightClearTimer) {
     clearTimeout(pingChartHighlightClearTimer)
     pingChartHighlightClearTimer = null
   }
   highlightedPingTaskId.value = taskId
+}
+
+function handlePingChartLegendSelection(params: unknown) {
+  const selected = (params as PingChartLegendSelectionEvent).selected
+  if (!selected)
+    return
+  const nextVisibility = new Map(legendTaskVisibility.value)
+  for (const task of selectedTasks.value) {
+    if (Object.hasOwn(selected, task.name))
+      nextVisibility.set(task.id, selected[task.name] !== false)
+  }
+  legendTaskVisibility.value = nextVisibility
+  if (highlightedPingTaskId.value !== null && !chartVisibleTaskIds.value.has(highlightedPingTaskId.value))
+    clearPingChartHighlight()
 }
 
 function handlePingChartDownplay(params: unknown) {
@@ -1068,6 +1091,7 @@ const pingChartOption = computed(() => {
 // ==================== 生命周期 ====================
 
 watch(selectedView, () => {
+  legendTaskVisibility.value = new Map()
   selectedTaskIds.value = []
   if (isCustomRange.value)
     ensureDefaultCustomRange()
@@ -1079,6 +1103,7 @@ watch(() => props.uuid, () => {
   remoteLossData.value = []
   tasks.value = []
   selectedTaskIds.value = []
+  legendTaskVisibility.value = new Map()
   activeTaskTooltipId.value = null
   smoothInfoTooltipOpen.value = false
   fetchRecords()
@@ -1457,6 +1482,7 @@ onBeforeUnmount(() => {
             @highlight="handlePingChartHighlight"
             @downplay="handlePingChartDownplay"
             @mouseover="handlePingChartMouseOver"
+            @legendselectchanged="handlePingChartLegendSelection"
           />
         </div>
       </template>

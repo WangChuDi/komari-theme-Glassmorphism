@@ -12,8 +12,8 @@
 
 ## 当前任务
 
-- 状态：done，`V3.2.0-mod V11` 已发布部署，详情 Ping 图悬停会同步前置对应丢包区间
-- 目标：ECharts 强调某测试节点曲线时，同时突出该任务自己的红色丢包竖向区间，并降低其他丢包背景干扰。
+- 状态：in-progress，V12 功能与真实页面验证完成，待发布部署
+- 目标：点击图表底部测试节点图例后，延迟曲线和该任务的丢包背景/前景区间使用同一可见状态。
 - 里程碑：M5 新功能，附带必要的托管配置与验证记录。
 - 范围：`PingChart.vue`、主题版本、发布与部署。
 - 不做：不修改 Komari 后端；不改变公开首页/详情页访问权限；不移除完整 Ping 弹窗里的多任务查看能力。
@@ -46,6 +46,7 @@
 - `V3.2.0-mod V10` 发布与部署：功能提交 `c54bb53` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V10`，资产 `komari-theme-Glassmorphism-build-c54bb53.zip`，SHA-256 `D6C059A02C7C6E3738522B6FA06866986621569BB4A4F5B055DE4FF97D152C6E`。已部署到 RackNerd，旧 mod V9 主题备份为 `/var/lib/komari/backups/theme-ping-aggregation-20260720-c54bb53`，服务 active。
 - V11 开发：详情 Ping 图监听 ECharts 的任务 highlight/mouseover，按 `task_id` 单独生成高层级丢包覆盖系列；强调期间全局丢包背景降淡，对应任务区间提高透明度并置于前景。窗口级指针边界负责在离开图表后恢复，避免 ECharts option 重绘打断 downplay/mouseout。
 - `V3.2.0-mod V11` 发布与部署：功能提交 `074a6f3` 已推送；Release `https://github.com/WangChuDi/komari-theme-Glassmorphism/releases/tag/V3.2.0-mod-V11`，资产 `komari-theme-Glassmorphism-build-074a6f3.zip`，SHA-256 `2CEA0E043823A896E3029ED66547D627CC351556E08810A9CAF4F2477217F195`。已部署到 RackNerd，旧 mod V10 主题备份为 `/var/lib/komari/backups/theme-loss-hover-20260720-074a6f3`，服务 active。
+- V12 开发：详情 Ping 图新增按任务 ID 保存的 ECharts 图例可见状态；丢包背景、悬停前景和图表悬浮丢包来源均只消费当前图例可见任务。切换时间范围或 VPS 时重置图例状态，隐藏正在强调的任务时同步清理强调状态。
 - 已定位首页 Ping 入口：`useNodePingStats.ts` 聚合历史，`useNodePingDisplay.ts` 输出首页卡片/列表，`PingChart.vue` 提供完整任务图表，`HomeView.vue` 承载首页控件。
 - 已新增 `src/utils/pingNetwork.ts`，统一识别电信、联通、移动、教育网关键词，并复用同一套 task_id hash 归一化。
 - 已让首页 Ping 共享历史保留任务元数据；Metric Store 的 `ping.loss` 分时点现在带 `task_id`，旧 `common:getRecords` fallback 改为读取 `tasks`，首页切换具体线路时延迟和丢包一起过滤。
@@ -79,6 +80,7 @@
 - V10 发布/部署验证：GitHub Release digest 与本地 SHA-256 一致；服务器公开 manifest 与 `/api/public` 均返回 200，版本为 `V3.2.0-mod V10`。主题 manifest 包含两个新聚合设置；线上 `PingChart-Bj99FeP2.js` 包含丢包来源，`HomeView-B6E9zSWe.js` 包含“所有”选择；目录为 `komari:komari`、权限 755。
 - V11 开发验证：`npm run lint` 与 `npm run type-check` 通过。真实 RackNerd 详情页默认保持完整红色丢包背景；悬停广州电信图例后仅该任务的 7 段丢包区间显示为前景竖带，其他丢包背景降淡；鼠标移出图表后立即恢复完整背景。
 - V11 发布/部署验证：`npm run build` 通过；GitHub Release digest 与本地 SHA-256 一致。服务器公开 manifest 与 `/api/public` 均返回 200，版本为 `V3.2.0-mod V11`；线上 `PingChart-Bu0mDWou.js` 返回 200，并包含指针边界清理与 `__ping_loss_highlight__` 前景覆盖实现；主题目录为 `komari:komari`、权限 755。
+- V12 开发验证：`npm run lint`、`npm run type-check`、`npm run build` 均通过，构建仅有既有 VueUse PURE 注释和 globe 大 chunk 警告。真实 RackNerd 详情页只选择丢包约 58% 的“北京移动 IPv4”后，图例关闭时橙色延迟曲线和全部红色丢包背景同时消失；再次点击图例后两者同时恢复。
 
 ## 交接说明
 
